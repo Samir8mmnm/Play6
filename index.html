@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Математическая Битва</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1><i class="fas fa-calculator"></i> Математическая Битва</h1>
+            <p class="subtitle">Проверь свои математические навыки в одиночку или с друзьями!</p>
+        </header>
+
+        <main>
+            <!-- Профиль -->
+            <section class="card">
+                <h2><i class="fas fa-user"></i> Профиль</h2>
+                <div class="input-group">
+                    <label>Ваш никнейм:</label>
+                    <input type="text" id="username" value="Игрок475" maxlength="20">
+                </div>
+                <p class="hint"><i class="fas fa-star"></i> Секретные имена дают x2 опыт! (спрятаны)</p>
+            </section>
+
+            <!-- Одиночная игра -->
+            <section class="card">
+                <h2><i class="fas fa-gamepad"></i> Режим игры</h2>
+                <div class="mode-selector">
+                    <button class="mode-btn active" data-mode="solo">Одиночная игра <i class="fas fa-user"></i></button>
+                    <button class="mode-btn" data-mode="multi">С друзьями <i class="fas fa-users"></i></button>
+                </div>
+
+                <div id="solo-settings" class="settings-panel active">
+                    <h3><i class="fas fa-cog"></i> Настройки одиночной игры</h3>
+                    <div class="input-group">
+                        <label>Количество вопросов (1-50):</label>
+                        <input type="range" id="questionRange" min="1" max="50" value="10">
+                        <div class="range-value">
+                            <span id="rangeValue">10</span> вопросов
+                        </div>
+                    </div>
+                    <button id="startSoloGame" class="btn-primary">
+                        <i class="fas fa-play"></i> Начать игру
+                    </button>
+                    <div id="solo-loader" class="loader hidden">
+                        <div class="spinner"></div>
+                        <p>Генерируем вопросы...</p>
+                    </div>
+                </div>
+
+                <div id="multi-settings" class="settings-panel">
+                    <h3><i class="fas fa-cog"></i> Настройки мультиплеера</h3>
+                    <div class="input-group">
+                        <label>Количество вопросов:</label>
+                        <select id="multiQuestions">
+                            <option value="10">10 вопросов</option>
+                            <option value="20" selected>20 вопросов</option>
+                            <option value="30">30 вопросов</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>Время на вопрос (сек):</label>
+                        <select id="multiTime">
+                            <option value="30">30 секунд</option>
+                            <option value="45" selected>45 секунд</option>
+                            <option value="60">60 секунд</option>
+                        </select>
+                    </div>
+
+                    <div class="connection-box">
+                        <div class="input-group">
+                            <label>Код комнаты (если есть):</label>
+                            <input type="text" id="roomCode" placeholder="ВВЕДИТЕ 4-ЗНАЧНЫЙ КОД" maxlength="4" pattern="[0-9]{4}">
+                        </div>
+                        <div class="button-group">
+                            <button id="createRoom" class="btn-secondary">
+                                <i class="fas fa-plus-circle"></i> Создать комнату
+                            </button>
+                            <button id="joinRoom" class="btn-secondary">
+                                <i class="fas fa-sign-in-alt"></i> Присоединиться
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="waiting-room" class="hidden">
+                        <h4><i class="fas fa-clock"></i> Комната ожидания</h4>
+                        <div class="players-list">
+                            <p>Ожидаем игроков...</p>
+                        </div>
+                        <button id="startMultiGame" class="btn-primary" disabled>
+                            <i class="fas fa-play"></i> Начать (минимум 2 игрока)
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Статистика -->
+            <section class="card stats">
+                <h2><i class="fas fa-chart-line"></i> Статистика</h2>
+                <div class="stats-grid">
+                    <div class="stat">
+                        <div class="stat-value" id="totalGames">0</div>
+                        <div class="stat-label">Игр сыграно</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="correctAnswers">0</div>
+                        <div class="stat-label">Правильных ответов</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="bestScore">0</div>
+                        <div class="stat-label">Лучший счёт</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-value" id="level">1</div>
+                        <div class="stat-label">Уровень</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>© 2023 Математическая Битва | Разработано с <i class="fas fa-heart"></i> для любителей математики</p>
+        </footer>
+    </div>
+
+    <!-- Модальное окно с игрой -->
+    <div id="gameModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Вопрос <span id="currentQuestion">1</span> из <span id="totalQuestions">10</span></h2>
+                <button id="closeGame" class="close-btn">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="question-box">
+                    <h3 id="questionText">Сколько будет 5 × 7?</h3>
+                    <div class="timer">
+                        <div class="timer-bar" id="timerBar"></div>
+                        <div class="timer-text" id="timerText">45</div>
+                    </div>
+                </div>
+                <div class="answers-grid" id="answersContainer">
+                    <!-- Ответы генерируются через JS -->
+                </div>
+                <div class="score-display">
+                    <p>Счёт: <span id="currentScore">0</span> | Правильно: <span id="correctCount">0</span></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+  </html>
