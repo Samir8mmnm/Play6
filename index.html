@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎮 Математическая Битва</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-firestore.js"></script>
+</head>
+<body>
+    <div class="container">
+        <!-- Главная панель -->
+        <div class="main-panel panel">
+            <!-- Стартовый экран -->
+            <div id="start">
+                <h1>🎮 Математическая Битва</h1>
+                <p class="subtitle">Проверь свои математические навыки в одиночку или с друзьями!</p>
+                
+                <div class="settings-grid">
+                    <div class="setting-card">
+                        <h3>👤 Профиль</h3>
+                        <label for="nick">Ваш никнейм:</label>
+                        <input type="text" id="nick" placeholder="Введите ваш ник" value="Игрок">
+                    </div>
+                    
+                    <div class="setting-card">
+                        <h3>🎮 Режим игры</h3>
+                        <select id="mode">
+                            <option value="single">Одиночная игра</option>
+                            <option value="multi">Мультиплеер</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Настройки одиночной игры -->
+                <div id="single-settings">
+                    <h3>⚙️ Настройки одиночной игры</h3>
+                    <label for="auto-count">Количество вопросов (1-50):</label>
+                    <input type="number" id="auto-count" min="1" max="50" value="10">
+                    
+                    <div class="button-group">
+                        <button onclick="startSingleGame()" class="success">🎯 Начать игру</button>
+                        <button onclick="testFirebase()" class="secondary">🔧 Тест Firebase</button>
+                    </div>
+                </div>
+
+                <!-- Настройки мультиплеера -->
+                <div id="multi-settings" class="hidden">
+                    <div class="settings-grid">
+                        <div class="setting-card">
+                            <h3>⚙️ Настройки игры</h3>
+                            <label for="multi-question-count">Количество вопросов:</label>
+                            <select id="multi-question-count">
+                                <option value="10">10 вопросов</option>
+                                <option value="15">15 вопросов</option>
+                                <option value="20" selected>20 вопросов</option>
+                                <option value="25">25 вопросов</option>
+                                <option value="30">30 вопросов</option>
+                            </select>
+                            
+                            <label for="question-time">Время на вопрос (сек):</label>
+                            <select id="question-time">
+                                <option value="30">30 секунд</option>
+                                <option value="45" selected>45 секунд</option>
+                                <option value="60">60 секунд</option>
+                                <option value="90">90 секунд</option>
+                            </select>
+                        </div>
+                        
+                        <div class="setting-card">
+                            <h3>🔗 Подключение</h3>
+                            <label for="room-code">Код комнаты (если есть):</label>
+                            <input type="text" id="room-code" placeholder="Введите 4-значный код" maxlength="4" style="text-transform: uppercase">
+                            
+                            <div class="button-group">
+                                <button onclick="createRoom()" class="success">🎮 Создать комнату</button>
+                                <button onclick="joinRoom()" class="primary">🔗 Присоединиться</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Лобби -->
+            <div id="lobby" class="hidden">
+                <div class="room-info">
+                    <h2>🎪 Комната ожидания</h2>
+                    <div class="room-code" id="room-code-display">XXXX</div>
+                    <p>Пригласите друзей по коду или ссылке</p>
+                    
+                    <div class="share-box" id="share-link" onclick="copyRoomCode()">
+                        Нажмите чтобы скопировать ссылку
+                    </div>
+                </div>
+
+                <div id="lobby-info"></div>
+
+                <h3>👥 Игроки в комнате (<span id="players-count">0</span>/8)</h3>
+                <div id="players-list"></div>
+
+                <div class="button-group">
+                    <button id="ready-btn" onclick="toggleReady()" class="secondary">✅ Я готов</button>
+                    <button id="start-btn" onclick="startRoomGame()" class="success hidden">🚀 Начать игру</button>
+                    <button id="force-start-btn" onclick="forceStartGame()" class="warning hidden">⚡ Начать принудительно</button>
+                    <button onclick="leaveRoom()" class="danger">🚪 Выйти из комнаты</button>
+                </div>
+            </div>
+
+            <!-- Игровой процесс -->
+            <div id="game" class="hidden">
+                <div class="game-header">
+                    <h2>🧠 Вопрос <span id="qnum">1</span> из <span id="qtotal">10</span></h2>
+                    <div class="score-display">
+                        🏆 <span id="score">0</span> очков
+                    </div>
+                </div>
+                
+                <div id="progress-container">
+                    <div id="progress-bar"></div>
+                </div>
+                
+                <div id="timer">
+                    ⏱️ Время: <span id="timer-value">0</span> сек
+                </div>
+                
+                <div id="question">
+                    <div id="question-text">Вопрос загружается...</div>
+                </div>
+                
+                <div id="options"></div>
+            </div>
+
+            <!-- Результаты -->
+            <div id="results" class="hidden">
+                <h2>🏆 Результаты игры</h2>
+                
+                <div class="results-summary">
+                    <div id="final-result" style="font-size: 1.2em; text-align: center; margin: 20px 0;"></div>
+                    
+                    <div id="winner" class="hidden">
+                        <div class="winner-icon">🏆</div>
+                        <h3 class="winner-text">ПОБЕДА!</h3>
+                        <p>Вы заняли первое место!</p>
+                    </div>
+                </div>
+
+                <h3>🏅 Общие результаты</h3>
+                <table id="final-results">
+                    <thead>
+                        <tr>
+                            <th>Место</th>
+                            <th>Игрок</th>
+                            <th>Очки</th>
+                            <th>Статус</th>
+                            <th>Точность</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+
+                <div class="button-group">
+                    <button onclick="showDetailedResults()" id="details-btn" class="primary">📊 Показать детальные результаты</button>
+                    <button onclick="location.reload()" class="secondary">🔄 Новая игра</button>
+                    <button onclick="returnToLobby()" id="return-btn" class="success hidden">↩️ Вернуться в лобби</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Боковая панель -->
+        <div class="side-panel panel">
+            <h3>📊 Live-результаты</h3>
+            <div id="live-results" class="hidden">
+                <div id="live-results-content"></div>
+            </div>
+
+            <h3>📝 Детальные результаты</h3>
+            <div id="detailed-results" class="hidden">
+                <div id="answers-list"></div>
+            </div>
+
+            <h3>🐛 Отладка</h3>
+            <button onclick="showDebugInfo()" class="debug-button">📋 Показать отладку</button>
+            <button onclick="clearDebug()" class="debug-button">🧹 Очистить логи</button>
+            
+            <div id="debug-panel" class="hidden">
+                <h4>Отладочная информация:</h4>
+                <div id="debug-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Элементы поверх страницы -->
+    <div id="loader" class="loader hidden">
+        <div class="spinner"></div>
+    </div>
+
+    <div id="countdown" class="hidden">3</div>
+
+    <div id="connection-status" class="hidden"></div>
+
+    <!-- Модальные окна -->
+    <div id="prize-modal" class="modal hidden">
+        <div class="modal-content">
+            <div class="prize-icon" id="prize-icon">🎁</div>
+            <h2 id="prize-title">ВЫ ВЫИГРАЛИ!</h2>
+            <p id="prize-description">Описание приза</p>
+            <button onclick="closePrizeModal()" class="success">🎉 Отлично!</button>
+        </div>
+    </div>
+
+    <!-- Основной скрипт -->
+    <script src="game.js"></script>
+</body>
+  </html>
