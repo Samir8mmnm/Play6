@@ -548,8 +548,13 @@ function listenToRoom() {
         (doc) => {
             if (!doc.exists) {
                 debugLog("Комната удалена или не найдена");
-                alert("Комната была удалена или не найдена!");
-                location.reload();
+                if (gameStarted) {
+                    // Если мы в игре и комната удалена, завершаем игру локально
+                    finishGame();
+                } else {
+                    alert("Комната была удалена!");
+                    location.reload();
+                }
                 return;
             }
             
@@ -575,9 +580,19 @@ function listenToRoom() {
                 startMultiplayerGame(room);
             }
             
+            // ИЗМЕНЕНИЕ: Показываем результаты, только если мы уже завершили игру
             if (room.status === "finished" && gameStarted) {
                 debugLog("Игра завершена, показываем результаты");
-                showMultiplayerResults(room);
+                // Не перезагружаем страницу, а показываем результаты
+                if (document.getElementById("results").classList.contains("hidden")) {
+                    showMultiplayerResults();
+                }
+            }
+            
+            // ИЗМЕНЕНИЕ: Если игра завершена, но мы еще не начали игру, просто показываем результаты
+            if (room.status === "finished" && !gameStarted) {
+                debugLog("Игра уже завершена другими игроками");
+                showMultiplayerResults();
             }
         },
         (error) => {
@@ -1191,37 +1206,48 @@ async function showMultiplayerResults(elapsedSec) {
         const roomDoc = await roomRef.get();
         
         if (!roomDoc.exists) {
-            alert("Комната не найдена!");
+            // Если комнаты нет, показываем локальные результаты
+            showSingleResults(elapsedSec || 0);
             return;
         }
         
         const room = roomDoc.data();
         
-        // Обновляем наш финальный счет
-        const updatedPlayers = room.players.map(p => {
-            if (p.nick === nick) {
-                return {
-                    ...p,
-                    score: score,
-                    finished: true,
-                    finishTime: new Date().toISOString(),
-                    totalTime: elapsedSec
-                };
-            }
-            return p;
-        });
+        // Если elapsedSec не передан, используем 0
+        const finalElapsedSec = elapsedSec || 0;
         
-        await roomRef.update({
-            players: updatedPlayers,
-            lastActive: new Date().toISOString(),
-            status: "finished"
-        });
+        // Обновляем наш финальный счет только если игра начата
+        if (gameStarted) {
+            const updatedPlayers = room.players.map(p => {
+                if (p.nick === nick) {
+                    return {
+                        ...p,
+                        score: score,
+                        finished: true,
+                        finishTime: new Date().toISOString(),
+                        totalTime: finalElapsedSec
+                    };
+                }
+                return p;
+            });
+            
+            await roomRef.update({
+                players: updatedPlayers,
+                lastActive: new Date().toISOString()
+                // Не меняем статус на finished, если он уже установлен
+            });
+        }
+        
+        // Получаем актуальные данные
+        const updatedRoomDoc = await roomRef.get();
+        const updatedRoom = updatedRoomDoc.data();
+        const currentPlayers = updatedRoom.players || [];
         
         // Сортируем игроков по очкам
-        const sortedPlayers = [...updatedPlayers].sort((a, b) => b.score - a.score);
+        const sortedPlayers = [...currentPlayers].sort((a, b) => b.score - a.score);
         const playerIndex = sortedPlayers.findIndex(p => p.nick === nick);
         const playerPlace = playerIndex + 1;
-        const isWinner = playerPlace === 1;
+        const isWinner = playerPlace === 1 && sortedPlayers.length > 0;
         
         const correctAnswers = userAnswers.filter(a => a.isCorrect).length;
         const accuracy = questions.length > 0 ? Math.round((correctAnswers / questions.length) * 100) : 0;
@@ -1257,7 +1283,7 @@ async function showMultiplayerResults(elapsedSec) {
             let html = "";
             sortedPlayers.forEach((player, index) => {
                 const place = index + 1;
-                const totalQuestions = room.questionCount || 20;
+                const totalQuestions = updatedRoom.questionCount || 20;
                 const progress = player.progress || 0;
                 const playerAccuracy = progress > 0 ? Math.round((player.score / (progress * 100)) * 100) || 0 : 0;
                 const finishTime = player.finished ? "Завершил" : "Не завершил";
@@ -1266,7 +1292,7 @@ async function showMultiplayerResults(elapsedSec) {
                 html += `
                     <tr style="${hasDoubleXP ? 'background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 165, 0, 0.05));' : ''}">
                         <td>${place} ${place === 1 ? "🏆" : place === 2 ? "🥈" : place === 3 ? "🥉" : ""}</td>
-                        <td>${player.nick} ${player.nick === room.creator ? "👑" : ""} ${hasDoubleXP ? "⚡" : ""}</td>
+                        <td>${player.nick} ${player.nick === updatedRoom.creator ? "👑" : ""} ${hasDoubleXP ? "⚡" : ""}</td>
                         <td><strong>${player.score}</strong> ${hasDoubleXP ? '<small style="color: #D69E2E;">(x2)</small>' : ''}</td>
                         <td>${finishTime}</td>
                         <td>${playerAccuracy}%</td>
@@ -1277,7 +1303,21 @@ async function showMultiplayerResults(elapsedSec) {
             finalResults.tBodies[0].innerHTML = html;
         }
         
-        showDetailedResults();
+        // Показываем результаты
+        const gameElement = document.getElementById("game");
+        const resultsElement = document.getElementById("results");
+        
+        if (gameElement) gameElement.classList.add("hidden");
+        if (resultsElement) resultsElement.classList.remove("hidden");
+        
+        // Показываем детальные результаты если есть данные
+        if (userAnswers.length > 0) {
+            showDetailedResults();
+        }
+        
+        // Обновляем live-результаты
+        const liveResults = document.getElementById("live-results");
+        if (liveResults) liveResults.classList.add("hidden");
         
         debugLog("Мультиплеерные результаты показаны", {
             place: playerPlace,
@@ -1289,7 +1329,9 @@ async function showMultiplayerResults(elapsedSec) {
     } catch (error) {
         console.error("Ошибка показа результатов:", error);
         debugLog("Ошибка показа результатов:", error);
-        alert("Не удалось загрузить результаты.");
+        
+        // Показываем локальные результаты в случае ошибки
+        showSingleResults(elapsedSec || 0);
     }
 }
 
@@ -1503,6 +1545,28 @@ async function leaveRoom() {
     }
     
     location.reload();
+}
+
+// ========== БЕЗОПАСНОЕ ОБНОВЛЕНИЕ КОМНАТЫ ==========
+async function safelyUpdateRoom(data) {
+    try {
+        if (!roomId || !db) return false;
+        
+        const roomRef = db.collection("rooms").doc(roomId);
+        const roomDoc = await roomRef.get();
+        
+        if (roomDoc.exists) {
+            await roomRef.update({
+                ...data,
+                lastActive: new Date().toISOString()
+            });
+            return true;
+        }
+        return false;
+    } catch (error) {
+        debugLog("Ошибка обновления комнаты:", error);
+        return false;
+    }
 }
 
 // ========== ОЧИСТКА СТАРЫХ КОМНАТ (автоматическая) ==========
