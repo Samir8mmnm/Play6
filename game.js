@@ -20,16 +20,17 @@ try {
     db.enablePersistence()
         .then(() => {
             console.log("✅ Firebase работает с кэшированием");
-            updateConnectionStatus(true);
+            updateConnectionStatus(true, true); // Показываем только создателю
         })
         .catch((err) => {
             console.log("⚠️ Офлайн кэширование недоступно:", err);
+            updateConnectionStatus(false, true);
         });
     
     console.log("✅ Firebase успешно инициализирован");
 } catch (error) {
     console.error("❌ Ошибка инициализации Firebase:", error);
-    updateConnectionStatus(false);
+    updateConnectionStatus(false, true);
 }
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -136,16 +137,22 @@ function showLoader(show) {
     document.getElementById('loader').classList.toggle('hidden', !show);
 }
 
-function updateConnectionStatus(connected) {
+// Обновленная функция для отображения статуса подключения
+function updateConnectionStatus(connected, forceShow = false) {
     const el = document.getElementById('connection-status');
     if (!el) return;
     
-    if (connected) {
-        el.innerHTML = '<span class="status-online">✅ Онлайн | Математическая Битва</span>';
+    // Показываем статус только создателю комнаты или если принудительно
+    const shouldShow = forceShow || isCreator;
+    
+    if (connected && shouldShow) {
+        el.innerHTML = '<span class="status-online">✅ Онлайн</span>';
+        el.classList.remove('hidden');
+    } else if (!connected && shouldShow) {
+        el.innerHTML = '<span class="status-offline">❌ Офлайн</span>';
         el.classList.remove('hidden');
     } else {
-        el.innerHTML = '<span class="status-offline">❌ Офлайн | Математическая Битва</span>';
-        el.classList.remove('hidden');
+        el.classList.add('hidden');
     }
 }
 
@@ -366,7 +373,24 @@ async function createRoom() {
     try {
         await db.enableNetwork();
         
-        roomId = generateRoomCode();
+        // Генерируем уникальный код комнаты
+        let attempts = 0;
+        let newRoomId;
+        let roomExists = true;
+        
+        // Проверяем, что комната с таким кодом не существует
+        while (roomExists && attempts < 10) {
+            newRoomId = generateRoomCode();
+            const roomDoc = await db.collection("rooms").doc(newRoomId).get();
+            roomExists = roomDoc.exists;
+            attempts++;
+        }
+        
+        if (roomExists) {
+            throw new Error("Не удалось создать уникальный код комнаты. Попробуйте еще раз.");
+        }
+        
+        roomId = newRoomId;
         isCreator = true;
         
         debugLog("Генерируем код комнаты:", roomId);
@@ -406,6 +430,11 @@ async function createRoom() {
         showLobby();
         listenToRoom();
         updateShareLink();
+        
+        // Скрываем индикатор подключения после создания комнаты
+        setTimeout(() => {
+            updateConnectionStatus(true, false);
+        }, 3000);
         
         alert(`✅ Комната создана!\n\nКод комнаты: ${roomId}\n\nДелитесь этим кодом с друзьями!`);
         
@@ -494,6 +523,9 @@ async function joinRoom() {
         
         showLobby();
         listenToRoom();
+        
+        // Скрываем индикатор подключения для игроков
+        updateConnectionStatus(false, false);
         
         alert(`✅ Вы присоединились к комнате ${roomId}!\n\nОжидайте начала игры...`);
         
@@ -598,7 +630,7 @@ function listenToRoom() {
         (error) => {
             console.error("❌ Ошибка подписки на комнату:", error);
             debugLog("Ошибка подписки на комнату:", error);
-            updateConnectionStatus(false);
+            updateConnectionStatus(false, isCreator);
         }
     );
 }
