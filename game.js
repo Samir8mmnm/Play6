@@ -17,6 +17,7 @@ async function initializeFirebase() {
         try {
             if (typeof firebase === 'undefined') {
                 console.error("Firebase библиотека не загружена!");
+                showFirebaseWarning();
                 resolve(false);
                 return;
             }
@@ -28,33 +29,40 @@ async function initializeFirebase() {
             
             db = firebase.firestore();
             
-            setTimeout(() => {
-                if (!firebaseReady) {
-                    console.log("Firebase timeout, но пробуем продолжить");
-                    resolve(false);
+            // Устанавливаем настройки для оффлайн работы
+            if (db.enablePersistence) {
+                try {
+                    await db.enablePersistence();
+                    console.log("Firebase persistence включен");
+                } catch (err) {
+                    console.log("Persistence не доступен:", err);
                 }
-            }, 3000);
+            }
             
+            // Пробуем подключиться
             try {
-                await db.collection('connection_test').doc('ping').set({
+                const testRef = db.collection('connection_test').doc('ping');
+                await testRef.set({
                     timestamp: new Date().toISOString(),
-                    user: 'test_connection'
+                    user: 'connection_test'
                 }, { merge: true });
                 
-                console.log("Firebase подключен успешно");
+                console.log("✅ Firebase подключен успешно");
                 firebaseReady = true;
-                updateConnectionStatus(true);
+                hideFirebaseWarning();
                 resolve(true);
                 
             } catch (error) {
-                console.error("Firebase ошибка теста:", error);
+                console.error("Firebase ошибка подключения:", error);
+                
                 if (error.code === 'permission-denied' || error.code === 'unavailable') {
                     console.log("Firebase проблемы с доступом, но пробуем продолжить");
                     firebaseReady = true;
+                    hideFirebaseWarning();
                     resolve(true);
                 } else {
                     firebaseReady = false;
-                    updateConnectionStatus(false);
+                    showFirebaseWarning();
                     resolve(false);
                 }
             }
@@ -62,10 +70,54 @@ async function initializeFirebase() {
         } catch (error) {
             console.error("Критическая ошибка Firebase:", error);
             firebaseReady = false;
-            updateConnectionStatus(false);
+            showFirebaseWarning();
             resolve(false);
         }
     });
+}
+
+// ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ FIREBASE ==========
+function showFirebaseWarning() {
+    if (!document.getElementById('firebase-warning')) {
+        const warningDiv = document.createElement('div');
+        warningDiv.id = 'firebase-warning';
+        warningDiv.style.cssText = `
+            position: fixed;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: linear-gradient(135deg, #f56565, #e53e3e);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 9999;
+            font-weight: bold;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            text-align: center;
+            max-width: 90%;
+        `;
+        warningDiv.innerHTML = `
+            ⚠️ Firebase не подключен! Мультиплеер недоступен.
+            <button onclick="testFirebase()" style="
+                background: white;
+                color: #e53e3e;
+                border: none;
+                padding: 5px 10px;
+                margin-left: 10px;
+                border-radius: 5px;
+                font-weight: bold;
+                cursor: pointer;
+            ">🔍 Тест Firebase</button>
+        `;
+        document.body.appendChild(warningDiv);
+    }
+}
+
+function hideFirebaseWarning() {
+    const warningDiv = document.getElementById('firebase-warning');
+    if (warningDiv) {
+        warningDiv.remove();
+    }
 }
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -172,8 +224,6 @@ function generateRoomCode() {
 function showLoader(show) {
     document.getElementById('loader').classList.toggle('hidden', !show);
 }
-
-// УБРАНО: updateConnectionStatus() - больше не показываем статус Firebase
 
 function debugLog(message, data = null) {
     const timestamp = new Date().toLocaleTimeString();
@@ -372,8 +422,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Проверяем на секретное имя
     checkSecretName(nick);
     
-    // Инициализируем Firebase
-    firebaseReady = await initializeFirebase();
+    // Инициализируем Firebase АВТОМАТИЧЕСКИ
+    await initializeFirebase();
+    
+    // Если Firebase не загружен, показываем предупреждение
+    if (!firebaseReady) {
+        console.log("Firebase не инициализирован, показываем предупреждение");
+        showFirebaseWarning();
+    }
     
     // Проверяем URL на наличие кода комнаты
     checkUrlForRoomCode();
@@ -400,7 +456,22 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
     
-    // УБРАНО: debugLog о загрузке Firebase
+    // Проверяем состояние Firebase каждые 30 секунд
+    setInterval(async () => {
+        if (firebaseReady && db) {
+            try {
+                const testRef = db.collection('connection_test').doc('heartbeat');
+                await testRef.set({
+                    timestamp: new Date().toISOString(),
+                    heartbeat: true
+                }, { merge: true });
+            } catch (error) {
+                console.log("Firebase потерял соединение, пробуем переподключиться");
+                firebaseReady = false;
+                showFirebaseWarning();
+            }
+        }
+    }, 30000);
 });
 
 function checkUrlForRoomCode() {
@@ -414,16 +485,21 @@ function checkUrlForRoomCode() {
     }
 }
 
-// ========== ТЕСТ FIREBASE (СОКРАЩЕН) ==========
+// ========== ТЕСТ FIREBASE ==========
 async function testFirebase() {
     showLoader(true);
     
     try {
-        if (!db) {
-            throw new Error("Firebase не инициализирован");
+        if (typeof firebase === 'undefined') {
+            throw new Error("Библиотека Firebase не загружена. Проверьте интернет соединение.");
         }
         
-        await db.enableNetwork();
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+            console.log("Firebase переинициализирован");
+        }
+        
+        db = firebase.firestore();
         
         const testRef = db.collection('test').doc('connection');
         await testRef.set({
@@ -432,27 +508,30 @@ async function testFirebase() {
             user: nick || 'test_user'
         });
         
-        firebaseReady = true;
+        const doc = await testRef.get();
         
-        alert("✅ Firebase работает отлично!\n\nМультиплеер доступен!");
+        firebaseReady = true;
+        hideFirebaseWarning();
+        
+        alert("✅ Firebase работает отлично!\n\nМультиплеер теперь доступен!");
         
     } catch (error) {
-        let errorMessage = "Firebase ошибка: ";
-        if (error.code === 'permission-denied') {
-            errorMessage += "Нет разрешений.\n\nИсправь правила Firestore:\n\n";
-            errorMessage += "rules_version = '2';\n";
-            errorMessage += "service cloud.firestore {\n";
-            errorMessage += "  match /databases/{database}/documents {\n";
-            errorMessage += "    match /{document=**} {\n";
-            errorMessage += "      allow read, write: if true;\n";
-            errorMessage += "    }\n";
-            errorMessage += "  }\n";
-            errorMessage += "}\n";
+        console.error("Ошибка теста Firebase:", error);
+        
+        let errorMessage = "";
+        if (error.message.includes("не загружена")) {
+            errorMessage = "Библиотека Firebase не загружена.\n\nВозможные причины:\n1. Нет интернет соединения\n2. Блокировка скриптов\n3. Проблемы с хостингом Firebase";
+        } else if (error.code === 'permission-denied') {
+            errorMessage = "Нет разрешений к Firebase.\n\nНеобходимо настроить правила Firestore:\n\nЗаходите в Firebase Console → Firestore → Rules и установите:\n\nrules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}";
+        } else if (error.code === 'unavailable') {
+            errorMessage = "Firebase недоступен.\n\nПроверьте:\n1. Интернет соединение\n2. Блокировку сайтов\n3. Попробуйте позже";
         } else {
-            errorMessage += error.message;
+            errorMessage = "Ошибка Firebase: " + error.message;
         }
         
-        alert(errorMessage);
+        alert("❌ " + errorMessage);
+        showFirebaseWarning();
+        
     } finally {
         showLoader(false);
     }
@@ -492,7 +571,8 @@ async function createRoom() {
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
-        alert("Firebase не подключен! Нажмите 'Тест Firebase'");
+        alert("Firebase не подключен!\n\nНажмите '🔍 Тест Firebase' или проверьте:\n1. Интернет соединение\n2. Разрешения Firestore\n3. Попробуйте обновить страницу");
+        showFirebaseWarning();
         return;
     }
     
@@ -547,8 +627,15 @@ async function createRoom() {
         
     } catch (error) {
         console.error("Ошибка создания комнаты:", error);
-        alert("Не удалось создать комнату: " + error.message);
+        
+        if (error.code === 'permission-denied') {
+            alert("❌ Ошибка доступа к Firebase!\n\nНеобходимо настроить правила Firestore:\n\nЗаходите в Firebase Console → Firestore → Rules и установите:\n\nrules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if true;\n    }\n  }\n}");
+        } else {
+            alert("Не удалось создать комнату: " + error.message);
+        }
+        
         showLoader(false);
+        showFirebaseWarning();
     }
 }
 
@@ -562,7 +649,8 @@ async function joinRoom() {
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
-        alert("Firebase не подключен! Нажмите 'Тест Firebase'");
+        alert("Firebase не подключен!\n\nНажмите '🔍 Тест Firebase' или проверьте:\n1. Интернет соединение\n2. Разрешения Firestore\n3. Попробуйте обновить страницу");
+        showFirebaseWarning();
         return;
     }
     
@@ -623,13 +711,18 @@ async function joinRoom() {
         
     } catch (error) {
         console.error("Ошибка присоединения:", error);
-        alert("Ошибка: " + error.message);
         
         if (error.message.includes("не найдена")) {
             if (confirm("Комната не найдена. Хотите создать новую комнату?")) {
                 createRoom();
             }
+        } else if (error.code === 'permission-denied') {
+            alert("❌ Ошибка доступа к Firebase!\n\nНеобходимо настроить правила Firestore.");
+            showFirebaseWarning();
+        } else {
+            alert("Ошибка: " + error.message);
         }
+        
     } finally {
         showLoader(false);
     }
@@ -1398,7 +1491,7 @@ function showDetailedResults() {
     }
 }
 
-// ========== УПРАВЛЕНИЕ КОМНАТОЙ (БЕЗ АВТОВЫХОДА ПРИ ОБНОВЛЕНИИ) ==========
+// ========== УПРАВЛЕНИЕ КОМНАТОЙ ==========
 async function returnToLobby() {
     if (!roomId || !db) return;
     
@@ -1455,7 +1548,6 @@ async function returnToLobby() {
     }
 }
 
-// ИЗМЕНЕНО: leaveRoom теперь вызывается ТОЛЬКО при нажатии кнопки
 async function leaveRoom() {
     if (!roomId || !nick) return;
     
@@ -1508,12 +1600,9 @@ async function leaveRoom() {
     location.reload();
 }
 
-// ИЗМЕНЕНО: Убрана обработка beforeunload для кика при обновлении
+// ========== ОБРАБОТКА ЗАКРЫТИЯ СТРАНИЦЫ ==========
 window.addEventListener('beforeunload', function(e) {
-    // Больше не выкидываем игрока при обновлении страницы
-    // Игрок может обновиться и останется в комнате
     if (roomId && !isPageUnloading) {
-        // Сохраняем информацию о том, что страница обновляется
         sessionStorage.setItem('pageRefreshing', 'true');
         sessionStorage.setItem('lastRoomId', roomId);
         sessionStorage.setItem('lastNick', nick);
@@ -1527,16 +1616,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const lastNick = sessionStorage.getItem('lastNick');
     
     if (wasRefreshing && lastRoomId && lastNick) {
-        // Пытаемся восстановить соединение с комнатой
         setTimeout(() => {
             if (firebaseReady && db) {
                 console.log("Попытка восстановления после обновления страницы");
-                // Здесь можно добавить автоматическое восстановление в комнату
             }
         }, 1000);
     }
     
-    // Очищаем сессионное хранилище
     sessionStorage.removeItem('pageRefreshing');
     sessionStorage.removeItem('lastRoomId');
     sessionStorage.removeItem('lastNick');
