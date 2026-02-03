@@ -15,42 +15,48 @@ let firebaseReady = false;
 async function initializeFirebase() {
     return new Promise(async (resolve) => {
         try {
+            // Проверяем, загружена ли библиотека Firebase
             if (typeof firebase === 'undefined') {
-                console.error("Firebase библиотека не загружена!");
+                console.error("❌ Firebase библиотека не загружена!");
                 resolve(false);
                 return;
             }
             
+            // Инициализируем Firebase
             if (!firebase.apps.length) {
                 firebase.initializeApp(firebaseConfig);
-                console.log("Firebase инициализирован");
+                console.log("✅ Firebase инициализирован");
             }
             
+            // Получаем Firestore
             db = firebase.firestore();
             
+            // Быстрая проверка подключения
             setTimeout(() => {
                 if (!firebaseReady) {
-                    console.log("Firebase timeout, но пробуем продолжить");
+                    console.log("⚠️ Firebase timeout, но пробуем продолжить");
                     resolve(false);
                 }
             }, 3000);
             
+            // Тестовый запрос
             try {
                 await db.collection('connection_test').doc('ping').set({
                     timestamp: new Date().toISOString(),
                     user: 'test_connection'
                 }, { merge: true });
                 
-                console.log("Firebase подключен успешно");
+                console.log("✅ Firebase подключен успешно");
                 firebaseReady = true;
                 updateConnectionStatus(true);
                 resolve(true);
                 
             } catch (error) {
-                console.error("Firebase ошибка теста:", error);
+                console.error("❌ Firebase ошибка теста:", error);
+                // Если ошибка прав доступа, всё равно пробуем работать
                 if (error.code === 'permission-denied' || error.code === 'unavailable') {
-                    console.log("Firebase проблемы с доступом, но пробуем продолжить");
-                    firebaseReady = true;
+                    console.log("⚠️ Firebase проблемы с доступом, но пробуем продолжить");
+                    firebaseReady = true; // Всё равно пробуем
                     resolve(true);
                 } else {
                     firebaseReady = false;
@@ -60,7 +66,7 @@ async function initializeFirebase() {
             }
             
         } catch (error) {
-            console.error("Критическая ошибка Firebase:", error);
+            console.error("❌ Критическая ошибка Firebase:", error);
             firebaseReady = false;
             updateConnectionStatus(false);
             resolve(false);
@@ -173,7 +179,18 @@ function showLoader(show) {
     document.getElementById('loader').classList.toggle('hidden', !show);
 }
 
-// УБРАНО: updateConnectionStatus() - больше не показываем статус Firebase
+function updateConnectionStatus(connected) {
+    const el = document.getElementById('connection-status');
+    if (!el) return;
+    
+    if (connected) {
+        el.innerHTML = '<span class="status-online">✅ Онлайн (Firebase работает)</span>';
+        el.classList.remove('hidden');
+    } else {
+        el.innerHTML = '<span class="status-offline">❌ Оффлайн (Firebase недоступен)</span>';
+        el.classList.remove('hidden');
+    }
+}
 
 function debugLog(message, data = null) {
     const timestamp = new Date().toLocaleTimeString();
@@ -207,25 +224,29 @@ function clearDebug() {
     document.getElementById('debug-content').innerHTML = '';
 }
 
-// ========== СЕКРЕТНЫЕ ИМЕНА ==========
+// ========== СЕКРЕТНЫЕ ИМЕНА (РАБОТАЮТ, НО НЕ ПОКАЗЫВАЮТСЯ) ==========
 function checkSecretName(name) {
     const trimmedName = name.trim();
     hasDoubleXP = SECRET_NAMES.some(secretName => 
         trimmedName.toLowerCase() === secretName.toLowerCase()
     );
     
+    if (hasDoubleXP) {
+        console.log(`🎉 Обнаружено секретное имя: ${name}! Двойной опыт активирован! (не показывается)`);
+    }
+    
     return hasDoubleXP;
 }
 
-// ========== КОЛЕСО ФОРТУНЫ ==========
+// ========== КОЛЕСО ФОРТУНЫ (РАБОТАЕТ, НО НЕ ПОКАЗЫВАЕТСЯ) ==========
 const wheelPrizes = [
-    {name:"Удвоение",icon:"💰",color:"#F6E05E",desc:"Следующий результат ×2",effect:()=>{localStorage.setItem('doublePoints','true');}},
-    {name:"Бессмертие",icon:"🛡️",color:"#48BB78",desc:"3 ошибки не считаются",effect:()=>{localStorage.setItem('immortality','3');}},
-    {name:"Секретный скин",icon:"🎨",color:"#9F7AEA",desc:"Эксклюзивный дизайн",effect:()=>{activateSecretSkin();}},
-    {name:"Турбо-режим",icon:"⚡",color:"#ED8936",desc:"+50% времени",effect:()=>{localStorage.setItem('turboMode','true');}},
-    {name:"Пропуск",icon:"➡️",color:"#4299E1",desc:"Пропустить 1 вопрос",effect:()=>{localStorage.setItem('skipQuestion','1');}},
-    {name:"Бонус+500",icon:"➕",color:"#F56565",desc:"+500 очков",effect:()=>{const bp=(parseInt(localStorage.getItem('bonusPoints')||'0')+500);localStorage.setItem('bonusPoints',bp);}},
-    {name:"Эксперт",icon:"👑",color:"#D69E2E",desc:"Золотая рамка",effect:()=>{localStorage.setItem('expertFrame',new Date(Date.now()+86400000).toISOString());}},
+    {name:"Удвоение",icon:"💰",color:"#F6E05E",desc:"Следующий результат ×2",effect:()=>{localStorage.setItem('doublePoints','true');showNotification("💰 Удвоение очков активировано!");}},
+    {name:"Бессмертие",icon:"🛡️",color:"#48BB78",desc:"3 ошибки не считаются",effect:()=>{localStorage.setItem('immortality','3');showNotification("🛡️ Бессмертие активировано (3 ошибки)!");}},
+    {name:"Секретный скин",icon:"🎨",color:"#9F7AEA",desc:"Эксклюзивный дизайн",effect:()=>{activateSecretSkin();showNotification("🎨 Секретный скин активирован!");}},
+    {name:"Турбо-режим",icon:"⚡",color:"#ED8936",desc:"+50% времени",effect:()=>{localStorage.setItem('turboMode','true');showNotification("⚡ Турбо-режим активирован!");}},
+    {name:"Пропуск",icon:"➡️",color:"#4299E1",desc:"Пропустить 1 вопрос",effect:()=>{localStorage.setItem('skipQuestion','1');showNotification("➡️ Пропуск вопроса активирован!");}},
+    {name:"Бонус+500",icon:"➕",color:"#F56565",desc:"+500 очков",effect:()=>{const bp=(parseInt(localStorage.getItem('bonusPoints')||'0')+500);localStorage.setItem('bonusPoints',bp);showNotification(`➕ +${bp} бонусных очков!`);}},
+    {name:"Эксперт",icon:"👑",color:"#D69E2E",desc:"Золотая рамка",effect:()=>{localStorage.setItem('expertFrame',new Date(Date.now()+86400000).toISOString());showNotification("👑 Статус Эксперт активирован!");}},
     {name:"Сюрприз",icon:"🎁",color:"#38B2AC",desc:"Случайный приз",effect:function(){const p=wheelPrizes.filter(x=>x.name!=="Сюрприз");const rp=p[Math.floor(Math.random()*p.length)];rp.effect();return rp;}}
 ];
 
@@ -241,6 +262,7 @@ function activateWheel(){
     const wheelContainer = document.getElementById('wheel-container');
     if (wheelContainer) wheelContainer.classList.remove('hidden');
     createWheel();
+    debugLog("Колесо фортуны активировано (не показывается)");
 }
 
 function createWheel(){
@@ -320,6 +342,7 @@ function showPrizeResult(index){
     if (resultModal) resultModal.classList.remove('hidden');
     
     createConfetti();
+    debugLog("Выигран приз колеса фортуны", { prize: actualPrize.name });
 }
 
 function closePrizeModal(){
@@ -360,16 +383,35 @@ function activateSecretSkin(){
     },86400000);
 }
 
+function showNotification(text){
+    const notification=document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent=text;
+    notification.style.position='fixed';
+    notification.style.top='20px';
+    notification.style.left='50%';
+    notification.style.transform='translateX(-50%)';
+    notification.style.padding='10px 15px';
+    notification.style.background='linear-gradient(135deg, #667eea, #764ba2)';
+    notification.style.color='white';
+    notification.style.borderRadius='8px';
+    notification.style.zIndex='10000';
+    notification.style.fontWeight='bold';
+    notification.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';
+    document.body.appendChild(notification);
+    setTimeout(()=>notification.remove(),3000);
+}
+
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log("Математическая битва загружается...");
+    console.log("🎮 Математическая битва загружается...");
     
     // Загружаем ник
     const savedNick = localStorage.getItem('mathBattleNick') || 'Игрок' + Math.floor(Math.random() * 1000);
     document.getElementById('nick').value = savedNick;
     nick = savedNick;
     
-    // Проверяем на секретное имя
+    // Проверяем на секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     // Инициализируем Firebase
@@ -391,8 +433,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         localStorage.setItem('mathBattleNick', newNick);
         nick = newNick;
         
+        // Проверяем на секретное имя (работает, но не показывает)
         checkSecretName(newNick);
         
+        // Проверка на секретное слово для колеса фортуны (работает, но не показывает)
         if (checkForSecretWord(newNick) && !wheelActivated) {
             setTimeout(() => {
                 activateWheel();
@@ -400,7 +444,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
     
-    // УБРАНО: debugLog о загрузке Firebase
+    debugLog("Приложение загружено", { firebaseReady, hasDoubleXP: "скрыто" });
 });
 
 function checkUrlForRoomCode() {
@@ -411,12 +455,14 @@ function checkUrlForRoomCode() {
         document.getElementById('mode').value = 'multi';
         document.getElementById("single-settings").classList.add("hidden");
         document.getElementById("multi-settings").classList.remove("hidden");
+        debugLog("Найден код комнаты в URL:", roomCode);
     }
 }
 
-// ========== ТЕСТ FIREBASE (СОКРАЩЕН) ==========
+// ========== ТЕСТ FIREBASE ==========
 async function testFirebase() {
     showLoader(true);
+    debugLog("🔍 Тестируем Firebase подключение...");
     
     try {
         if (!db) {
@@ -424,7 +470,9 @@ async function testFirebase() {
         }
         
         await db.enableNetwork();
+        debugLog("Сеть Firebase включена");
         
+        // Тестируем запись
         const testRef = db.collection('test').doc('connection');
         await testRef.set({
             test: true,
@@ -432,11 +480,22 @@ async function testFirebase() {
             user: nick || 'test_user'
         });
         
+        // Тестируем чтение
+        const doc = await testRef.get();
+        if (doc.exists) {
+            debugLog("✅ Чтение успешно:", doc.data());
+        }
+        
         firebaseReady = true;
+        updateConnectionStatus(true);
         
         alert("✅ Firebase работает отлично!\n\nМультиплеер доступен!");
         
     } catch (error) {
+        debugLog("❌ Ошибка теста Firebase:", error);
+        firebaseReady = false;
+        updateConnectionStatus(false);
+        
         let errorMessage = "Firebase ошибка: ";
         if (error.code === 'permission-denied') {
             errorMessage += "Нет разрешений.\n\nИсправь правила Firestore:\n\n";
@@ -479,6 +538,7 @@ function startSingleGame() {
     document.getElementById("live-results").classList.add("hidden");
     
     startGame();
+    debugLog("Одиночная игра начата", { questions: questions.length, nick });
 }
 
 // ========== МУЛЬТИПЛЕЕР ==========
@@ -489,6 +549,7 @@ async function createRoom() {
         return;
     }
     
+    // Проверяем секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
@@ -505,15 +566,19 @@ async function createRoom() {
     }
     
     showLoader(true);
+    debugLog("Создание комнаты...", { questionCount, timePerQuestion });
     
     try {
         await db.enableNetwork();
         
+        // Генерируем уникальный код
         roomId = generateRoomCode();
         isCreator = true;
         
+        // Создаём вопросы
         const roomQuestions = getUniqueQuestions(questionCount);
         
+        // Создаём комнату в Firebase
         const roomData = {
             creator: nick,
             players: [{
@@ -524,7 +589,7 @@ async function createRoom() {
                 joinedAt: new Date().toISOString(),
                 lastUpdate: new Date().toISOString(),
                 isCreator: true,
-                hasDoubleXP: hasDoubleXP
+                hasDoubleXP: hasDoubleXP // Сохраняем, но не показываем
             }],
             status: "waiting",
             questions: roomQuestions,
@@ -537,16 +602,21 @@ async function createRoom() {
         
         await db.collection("rooms").doc(roomId).set(roomData);
         
+        debugLog("✅ Комната создана успешно!", { roomId, nick });
+        
+        // Показываем лобби
         showLobby();
         listenToRoom();
         updateShareLink();
         
+        // Показываем результат
         showLoader(false);
         
         alert(`✅ Комната создана!\n\nКод комнаты: ${roomId}\n\nДелитесь ссылкой с друзьями!\n\n(Ссылка автоматически скопирована в буфер)`);
         
     } catch (error) {
-        console.error("Ошибка создания комнаты:", error);
+        console.error("❌ Ошибка создания комнаты:", error);
+        debugLog("Ошибка создания комнаты:", error);
         alert("Не удалось создать комнату: " + error.message);
         showLoader(false);
     }
@@ -559,6 +629,7 @@ async function joinRoom() {
         return;
     }
     
+    // Проверяем секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
@@ -573,6 +644,7 @@ async function joinRoom() {
     }
     
     showLoader(true);
+    debugLog("Присоединение к комнате:", roomId);
     
     try {
         await db.enableNetwork();
@@ -598,6 +670,7 @@ async function joinRoom() {
             throw new Error("Игрок с таким ником уже есть в комнате!");
         }
         
+        // Добавляем игрока
         const newPlayer = {
             nick: nick,
             ready: false,
@@ -606,7 +679,7 @@ async function joinRoom() {
             joinedAt: new Date().toISOString(),
             lastUpdate: new Date().toISOString(),
             isCreator: false,
-            hasDoubleXP: hasDoubleXP
+            hasDoubleXP: hasDoubleXP // Сохраняем, но не показываем
         };
         
         await roomRef.update({
@@ -616,13 +689,16 @@ async function joinRoom() {
         
         isCreator = false;
         
+        debugLog("✅ Успешно присоединился к комнате", { roomId, nick });
+        
         showLobby();
         listenToRoom();
         
         alert(`✅ Вы присоединились к комнате ${roomId}!\n\nОжидайте начала игры...`);
         
     } catch (error) {
-        console.error("Ошибка присоединения:", error);
+        console.error("❌ Ошибка присоединения:", error);
+        debugLog("Ошибка присоединения:", error);
         alert("Ошибка: " + error.message);
         
         if (error.message.includes("не найдена")) {
@@ -642,13 +718,17 @@ function showLobby() {
     document.getElementById("results").classList.add("hidden");
     
     document.getElementById("room-code-display").textContent = roomId;
+    
+    debugLog("Лобби показано", { roomId, isCreator });
 }
 
+// ========== ОБНОВЛЕНИЕ ССЫЛКИ ДЛЯ ПРИГЛАШЕНИЯ ==========
 function updateShareLink() {
     const currentUrl = window.location.href.split('?')[0];
     const shareUrl = `${currentUrl}?room=${roomId}`;
     const shareBox = document.getElementById('share-link');
     
+    // Создаём ссылку с target="_blank" для открытия в новой вкладке
     shareBox.innerHTML = `
         <a href="${shareUrl}" target="_blank" rel="noopener noreferrer" 
            style="color: white; text-decoration: none; display: block; padding: 10px; cursor: pointer;">
@@ -658,10 +738,12 @@ function updateShareLink() {
     `;
     shareBox.title = "Нажмите, чтобы открыть приглашение в новой вкладке";
     
+    // Автоматически копируем ссылку в буфер
     navigator.clipboard.writeText(shareUrl).then(() => {
-        console.log("Ссылка скопирована в буфер:", shareUrl);
+        console.log("✅ Ссылка скопирована в буфер:", shareUrl);
+        debugLog("Ссылка скопирована", { url: shareUrl });
     }).catch(err => {
-        console.log("Не удалось скопировать ссылку");
+        console.log("⚠️ Не удалось скопировать ссылку");
     });
 }
 
@@ -678,13 +760,17 @@ function copyRoomCode() {
 function listenToRoom() {
     if (!roomId || !db) return;
     
+    // Отписываемся от старого слушателя
     if (roomUnsubscribe) {
         roomUnsubscribe();
     }
     
+    debugLog("👂 Начинаю слушать комнату:", roomId);
+    
     roomUnsubscribe = db.collection("rooms").doc(roomId).onSnapshot(
         (doc) => {
             if (!doc.exists) {
+                debugLog("Комната удалена");
                 if (gameStarted) {
                     finishGame();
                 } else {
@@ -697,20 +783,31 @@ function listenToRoom() {
             const room = doc.data();
             players = room.players || [];
             
+            debugLog("📡 Обновление комнаты", {
+                players: players.length,
+                status: room.status
+            });
+            
+            // Обновляем UI
             updateLobbyInfo(room);
             updatePlayersList(room);
             updateLobbyControls(room);
             
+            // Если игра началась
             if (room.status === "started" && !gameStarted) {
+                debugLog("🚀 Игра началась!");
                 startMultiplayerGame(room);
             }
             
+            // Если игра завершена
             if (room.status === "finished" && gameStarted) {
+                debugLog("🏁 Игра завершена");
                 showMultiplayerResults();
             }
         },
         (error) => {
             console.error("Ошибка слушателя комнаты:", error);
+            debugLog("Ошибка слушателя комнаты:", error);
         }
     );
 }
@@ -855,6 +952,7 @@ async function startRoomGame() {
         const roomDoc = await roomRef.get();
         const room = roomDoc.data();
         
+        // Проверяем условия
         if (room.players.length < 2) {
             alert("Нужно минимум 2 игрока!");
             return;
@@ -866,12 +964,16 @@ async function startRoomGame() {
             return;
         }
         
+        // Обновляем статус комнаты
         await roomRef.update({
             status: "started",
             startTime: new Date().toISOString(),
             lastActive: new Date().toISOString()
         });
         
+        debugLog("🚀 Игра начата создателем");
+        
+        // Показываем обратный отсчёт
         startCountdown();
         
     } catch (error) {
@@ -892,18 +994,22 @@ async function forceStartGame() {
         const roomDoc = await roomRef.get();
         const room = roomDoc.data();
         
+        // Помечаем всех как готовых
         const updatedPlayers = room.players.map(player => ({
             ...player,
             ready: true,
             lastUpdate: new Date().toISOString()
         }));
         
+        // Обновляем комнату
         await roomRef.update({
             players: updatedPlayers,
             status: "started",
             startTime: new Date().toISOString(),
             lastActive: new Date().toISOString()
         });
+        
+        debugLog("🚀 Игра начата принудительно");
         
         startCountdown();
         
@@ -933,7 +1039,7 @@ function startCountdown() {
     }, 1000);
 }
 
-// ========== LIVE РЕЗУЛЬТАТЫ ==========
+// ========== LIVE РЕЗУЛЬТАТЫ (ИСПРАВЛЕННЫЕ) ==========
 function listenToProgress() {
     if (!roomId || !db) return;
     
@@ -954,6 +1060,7 @@ function listenToProgress() {
         let html = "";
         sortedPlayers.forEach((player, index) => {
             const place = index + 1;
+            // ИСПРАВЛЕНО: player.progress - это текущий номер вопроса, а не правильные ответы!
             
             html += `
                 <div class="result-row">
@@ -980,6 +1087,7 @@ function startMultiplayerGame(room) {
     if (gameStarted) return;
     
     gameStarted = true;
+    debugLog("Запускаем мультиплеерную игру...", room);
     
     questions = room.questions || getUniqueQuestions(room.questionCount || 20);
     
@@ -994,6 +1102,7 @@ function startMultiplayerGame(room) {
     
     setTimeout(() => {
         startGame();
+        debugLog("Игра начата для игрока", { nick, questions: questions.length });
     }, 1000);
     
     listenToProgress();
@@ -1047,6 +1156,10 @@ function startGame() {
     
     showQuestion();
     updateProgress();
+    
+    debugLog("Игра начата", { 
+        totalQuestions: questions.length
+    });
 }
 
 function showQuestion() {
@@ -1087,6 +1200,7 @@ function showQuestion() {
         if (timerElement) {
             timerElement.textContent = elapsedTime;
             
+            // Изменение цвета таймера
             const timerParent = timerElement.parentElement;
             if (elapsedTime > 30) {
                 timerParent.classList.add("timer-danger");
@@ -1106,11 +1220,14 @@ function showQuestion() {
         label.onclick = () => {
             clearInterval(questionTimer);
             
+            // Блокируем все варианты
             Array.from(document.querySelectorAll(".option")).forEach(o => o.onclick = null);
             
+            // Подсчет очков
             let points = 100 - Math.floor(elapsedTime / 5) * 5;
             if (points < 0) points = 0;
             
+            // Применяем двойной опыт, если есть (работает, но не показывается)
             if (hasDoubleXP) {
                 points *= 2;
             }
@@ -1120,14 +1237,21 @@ function showQuestion() {
             if (isCorrect) {
                 label.classList.add("correct");
                 score += points;
+                debugLog(`Правильный ответ! +${points} очков`, { 
+                    question: currentQuestionIndex + 1, 
+                    time: elapsedTime,
+                    doubleXP: hasDoubleXP
+                });
             } else {
                 label.classList.add("wrong");
                 const correctOption = document.querySelectorAll(".option")[question.c];
                 if (correctOption) {
                     correctOption.classList.add("correct");
                 }
+                debugLog(`Неправильный ответ`, { question: currentQuestionIndex + 1 });
             }
             
+            // Сохраняем ответ
             userAnswers.push({
                 question: question.q,
                 userAnswer: answer,
@@ -1139,10 +1263,12 @@ function showQuestion() {
                 doubleXP: hasDoubleXP && isCorrect
             });
             
+            // Обновляем прогресс в мультиплеере
             if (roomId) {
                 updatePlayerProgress();
             }
             
+            // Следующий вопрос через 1 секунду
             setTimeout(() => {
                 currentQuestionIndex++;
                 showQuestion();
@@ -1184,6 +1310,13 @@ function finishGame() {
         if (returnBtn) returnBtn.classList.add("hidden");
         showSingleResults(elapsedSec);
     }
+    
+    debugLog("Игра завершена", {
+        score: score,
+        time: elapsedSec,
+        correctAnswers: userAnswers.filter(a => a.isCorrect).length,
+        totalQuestions: questions.length
+    });
 }
 
 function showSingleResults(elapsedSec) {
@@ -1218,6 +1351,7 @@ async function finishMultiplayerGame(elapsedSec) {
         
         const room = roomDoc.data();
         
+        // Обновляем наш финальный счет
         const updatedPlayers = room.players.map(p => {
             if (p.nick === nick) {
                 return {
@@ -1231,6 +1365,7 @@ async function finishMultiplayerGame(elapsedSec) {
             return p;
         });
         
+        // Проверяем, все ли игроки закончили
         const allFinished = updatedPlayers.every(p => p.finished);
         
         await roomRef.update({
@@ -1239,6 +1374,7 @@ async function finishMultiplayerGame(elapsedSec) {
             lastActive: new Date().toISOString()
         });
         
+        // Показываем результаты
         showMultiplayerResults();
         
     } catch (error) {
@@ -1262,6 +1398,7 @@ async function showMultiplayerResults() {
         const room = roomDoc.data();
         const players = room.players || [];
         
+        // Сортируем игроков по очкам
         const sortedPlayers = [...players].sort((a, b) => b.score - a.score);
         const playerIndex = sortedPlayers.findIndex(p => p.nick === nick);
         const playerPlace = playerIndex + 1;
@@ -1284,6 +1421,7 @@ async function showMultiplayerResults() {
             if (winnerElement) winnerElement.classList.remove("hidden");
         }
         
+        // Таблица результатов
         const finalResults = document.getElementById("final-results");
         if (finalResults && finalResults.tBodies[0]) {
             let html = "";
@@ -1310,13 +1448,19 @@ async function showMultiplayerResults() {
         
         showDetailedResults();
         
+        debugLog("Мультиплеерные результаты показаны", {
+            place: playerPlace,
+            totalPlayers: sortedPlayers.length,
+            isWinner: isWinner
+        });
+        
     } catch (error) {
         console.error("Ошибка показа результатов:", error);
         alert("Не удалось загрузить результаты.");
     }
 }
 
-// ========== ДЕТАЛЬНЫЕ РЕЗУЛЬТАТЫ ==========
+// ========== ДЕТАЛЬНЫЕ РЕЗУЛЬТАТЫ (ИСПРАВЛЕННЫЕ - БЕЗ СЕКРЕТНЫХ ИМЁН) ==========
 function showDetailedResults() {
     if (detailedResultsShown) return;
     
@@ -1398,7 +1542,7 @@ function showDetailedResults() {
     }
 }
 
-// ========== УПРАВЛЕНИЕ КОМНАТОЙ (БЕЗ АВТОВЫХОДА ПРИ ОБНОВЛЕНИИ) ==========
+// ========== УПРАВЛЕНИЕ КОМНАТОЙ ==========
 async function returnToLobby() {
     if (!roomId || !db) return;
     
@@ -1449,19 +1593,16 @@ async function returnToLobby() {
         
         showLobby();
         
+        debugLog("Вернулись в лобби");
+        
     } catch (error) {
         console.error("Ошибка возврата в лобби:", error);
         alert("Не удалось вернуться в лобби");
     }
 }
 
-// ИЗМЕНЕНО: leaveRoom теперь вызывается ТОЛЬКО при нажатии кнопки
 async function leaveRoom() {
     if (!roomId || !nick) return;
-    
-    if (!confirm("Вы уверены, что хотите выйти из комнаты?")) {
-        return;
-    }
     
     isPageUnloading = true;
     
@@ -1477,6 +1618,7 @@ async function leaveRoom() {
                 
                 if (updatedPlayers.length === 0) {
                     await roomRef.delete();
+                    debugLog("Комната удалена (последний игрок вышел)");
                 } else {
                     await roomRef.update({
                         players: updatedPlayers,
@@ -1487,6 +1629,7 @@ async function leaveRoom() {
                         await roomRef.update({
                             creator: updatedPlayers[0].nick
                         });
+                        debugLog("Новый создатель комнаты:", updatedPlayers[0].nick);
                     }
                 }
             }
@@ -1508,40 +1651,6 @@ async function leaveRoom() {
     location.reload();
 }
 
-// ИЗМЕНЕНО: Убрана обработка beforeunload для кика при обновлении
-window.addEventListener('beforeunload', function(e) {
-    // Больше не выкидываем игрока при обновлении страницы
-    // Игрок может обновиться и останется в комнате
-    if (roomId && !isPageUnloading) {
-        // Сохраняем информацию о том, что страница обновляется
-        sessionStorage.setItem('pageRefreshing', 'true');
-        sessionStorage.setItem('lastRoomId', roomId);
-        sessionStorage.setItem('lastNick', nick);
-    }
-});
-
-// Восстановление при загрузке страницы
-document.addEventListener('DOMContentLoaded', function() {
-    const wasRefreshing = sessionStorage.getItem('pageRefreshing');
-    const lastRoomId = sessionStorage.getItem('lastRoomId');
-    const lastNick = sessionStorage.getItem('lastNick');
-    
-    if (wasRefreshing && lastRoomId && lastNick) {
-        // Пытаемся восстановить соединение с комнатой
-        setTimeout(() => {
-            if (firebaseReady && db) {
-                console.log("Попытка восстановления после обновления страницы");
-                // Здесь можно добавить автоматическое восстановление в комнату
-            }
-        }, 1000);
-    }
-    
-    // Очищаем сессионное хранилище
-    sessionStorage.removeItem('pageRefreshing');
-    sessionStorage.removeItem('lastRoomId');
-    sessionStorage.removeItem('lastNick');
-});
-
 // ========== ОЧИСТКА СТАРЫХ КОМНАТ ==========
 setInterval(async () => {
     try {
@@ -1554,10 +1663,21 @@ setInterval(async () => {
         
         oldRooms.forEach(doc => {
             doc.ref.delete();
+            debugLog("Удалена старая комната:", doc.id);
         });
     } catch (error) {
-        console.error("Ошибка очистки комнат:", error);
+        debugLog("Ошибка очистки комнат:", error);
     }
 }, 30 * 60 * 1000);
 
-console.log("Математическая битва готова к работе!");
+// ========== ОБРАБОТКА ЗАКРЫТИЯ СТРАНИЦЫ ==========
+window.addEventListener('beforeunload', function(e) {
+    if (!isPageUnloading && (gameStarted || roomId)) {
+        e.preventDefault();
+        e.returnValue = 'Вы находитесь в игре. Вы уверены, что хотите уйти?';
+        leaveRoom();
+    }
+});
+
+console.log("🎮 Математическая битва полностью загружена и готова к работе!");
+debugLog("Система готова. Добро пожаловать в игру!");
