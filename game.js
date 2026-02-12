@@ -94,7 +94,7 @@ let isPageUnloading = false;
 let detailedResultsShown = false;
 let wheelActivated = false;
 
-// Секретные имена для двойного опыта
+// ========== СЕКРЕТНЫЕ ИМЕНА ==========
 const SECRET_NAMES = ["Пидиди", "Эпштейн", "Чахапов", "Мегаманс"];
 let hasDoubleXP = false;
 
@@ -224,6 +224,7 @@ function clearDebug() {
     document.getElementById('debug-content').innerHTML = '';
 }
 
+// ========== СЕКРЕТНЫЕ ИМЕНА (РАБОТАЮТ, НО НЕ ПОКАЗЫВАЮТСЯ) ==========
 function checkSecretName(name) {
     const trimmedName = name.trim();
     hasDoubleXP = SECRET_NAMES.some(secretName => 
@@ -231,36 +232,174 @@ function checkSecretName(name) {
     );
     
     if (hasDoubleXP) {
-        console.log(`🎉 Обнаружено секретное имя: ${name}! Двойной опыт активирован!`);
-        debugLog("Секретное имя обнаружено", { name, secretNames: SECRET_NAMES });
-        
-        // Показываем уведомление
-        showDoubleXPNotification();
+        console.log(`🎉 Обнаружено секретное имя: ${name}! Двойной опыт активирован! (не показывается)`);
     }
     
     return hasDoubleXP;
 }
 
-function showDoubleXPNotification() {
-    const notification = document.createElement('div');
-    notification.className = 'notification';
-    notification.textContent = "🎉 ВАУ! Вы используете секретное имя! Получаете ДВОЙНОЙ опыт за все ответы!";
-    notification.style.background = 'linear-gradient(135deg, #FFD700, #FFA500)';
-    notification.style.color = '#000';
-    notification.style.position = 'fixed';
-    notification.style.top = '20px';
-    notification.style.left = '50%';
-    notification.style.transform = 'translateX(-50%)';
-    notification.style.padding = '15px 20px';
-    notification.style.borderRadius = '10px';
-    notification.style.zIndex = '10000';
-    notification.style.fontWeight = 'bold';
-    notification.style.boxShadow = '0 4px 12px rgba(0,0,0,0.3)';
-    document.body.appendChild(notification);
+// ========== КОЛЕСО ФОРТУНЫ (РАБОТАЕТ, НО НЕ ПОКАЗЫВАЕТСЯ) ==========
+const wheelPrizes = [
+    {name:"Удвоение",icon:"💰",color:"#F6E05E",desc:"Следующий результат ×2",effect:()=>{localStorage.setItem('doublePoints','true');showNotification("💰 Удвоение очков активировано!");}},
+    {name:"Бессмертие",icon:"🛡️",color:"#48BB78",desc:"3 ошибки не считаются",effect:()=>{localStorage.setItem('immortality','3');showNotification("🛡️ Бессмертие активировано (3 ошибки)!");}},
+    {name:"Секретный скин",icon:"🎨",color:"#9F7AEA",desc:"Эксклюзивный дизайн",effect:()=>{activateSecretSkin();showNotification("🎨 Секретный скин активирован!");}},
+    {name:"Турбо-режим",icon:"⚡",color:"#ED8936",desc:"+50% времени",effect:()=>{localStorage.setItem('turboMode','true');showNotification("⚡ Турбо-режим активирован!");}},
+    {name:"Пропуск",icon:"➡️",color:"#4299E1",desc:"Пропустить 1 вопрос",effect:()=>{localStorage.setItem('skipQuestion','1');showNotification("➡️ Пропуск вопроса активирован!");}},
+    {name:"Бонус+500",icon:"➕",color:"#F56565",desc:"+500 очков",effect:()=>{const bp=(parseInt(localStorage.getItem('bonusPoints')||'0')+500);localStorage.setItem('bonusPoints',bp);showNotification(`➕ +${bp} бонусных очков!`);}},
+    {name:"Эксперт",icon:"👑",color:"#D69E2E",desc:"Золотая рамка",effect:()=>{localStorage.setItem('expertFrame',new Date(Date.now()+86400000).toISOString());showNotification("👑 Статус Эксперт активирован!");}},
+    {name:"Сюрприз",icon:"🎁",color:"#38B2AC",desc:"Случайный приз",effect:function(){const p=wheelPrizes.filter(x=>x.name!=="Сюрприз");const rp=p[Math.floor(Math.random()*p.length)];rp.effect();return rp;}}
+];
+
+function checkForSecretWord(text) {
+    const words=['эпштейн','epstein','эпштей','epshtein','фортуна','wheel','колесо','секрет','ep'];
+    const lower=text.toLowerCase();
+    return words.some(word=>lower.includes(word));
+}
+
+function activateWheel(){
+    if(wheelActivated)return;
+    wheelActivated=true;
+    const wheelContainer = document.getElementById('wheel-container');
+    if (wheelContainer) wheelContainer.classList.remove('hidden');
+    createWheel();
+    debugLog("Колесо фортуны активировано (не показывается)");
+}
+
+function createWheel(){
+    const wheel=document.getElementById('wheel');
+    if (!wheel) return;
     
-    setTimeout(() => {
-        notification.remove();
-    }, 5000);
+    wheel.innerHTML='<div class="wheel-pointer"></div>';
+    const total=wheelPrizes.length;
+    const angle=360/total;
+    
+    wheelPrizes.forEach((prize,index)=>{
+        const section=document.createElement('div');
+        section.className='wheel-section';
+        const content=document.createElement('div');
+        content.className='wheel-section-content';
+        content.innerHTML=`<span class="wheel-icon">${prize.icon}</span><span class="wheel-text">${prize.name}</span>`;
+        section.appendChild(content);
+        const rotate=angle*index;
+        const skew=90-angle;
+        section.style.transform=`rotate(${rotate}deg) skewY(${skew}deg)`;
+        section.style.background=`linear-gradient(135deg,${prize.color},${darkenColor(prize.color,20)})`;
+        if(index%2===0)section.style.filter='brightness(0.9)';
+        section.style.border='2px solid rgba(255,255,255,0.4)';
+        wheel.appendChild(section);
+    });
+}
+
+function darkenColor(color,percent){
+    color=color.replace('#','');
+    let r=parseInt(color.substring(0,2),16);
+    let g=parseInt(color.substring(2,4),16);
+    let b=parseInt(color.substring(4,6),16);
+    r=Math.max(0,Math.min(255,Math.floor(r*(100-percent)/100)));
+    g=Math.max(0,Math.min(255,Math.floor(g*(100-percent)/100)));
+    b=Math.max(0,Math.min(255,Math.floor(b*(100-percent)/100)));
+    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
+}
+
+function spinWheel(){
+    const wheel=document.getElementById('wheel');
+    const btn=document.getElementById('spin-btn');
+    if (!wheel || !btn) return;
+    
+    btn.disabled=true;
+    btn.textContent='🌀 ВРАЩАЕТСЯ...';
+    const rotations=3+Math.floor(Math.random()*6);
+    const prizeIndex=Math.floor(Math.random()*wheelPrizes.length);
+    const angle=360/wheelPrizes.length;
+    const finalAngle=rotations*360+prizeIndex*angle-angle/2;
+    wheel.style.setProperty('--rotation',`${finalAngle}deg`);
+    wheel.classList.add('spinning');
+    setTimeout(()=>{
+        showPrizeResult(prizeIndex);
+        wheel.classList.remove('spinning');
+        btn.disabled=false;
+        btn.textContent='🎯 КРУТИТЬ КОЛЕСО!';
+    },3000);
+}
+
+function showPrizeResult(index){
+    const prize=wheelPrizes[index];
+    let actualPrize=prize;
+    if(prize.name==="Сюрприз"){
+        actualPrize=prize.effect();
+    }else{
+        prize.effect();
+    }
+    
+    const resultIcon = document.getElementById('prize-icon');
+    const resultText = document.getElementById('prize-title');
+    const resultDesc = document.getElementById('prize-description');
+    const resultModal = document.getElementById('prize-modal');
+    
+    if (resultIcon) resultIcon.textContent=actualPrize.icon;
+    if (resultText) resultText.textContent=`ВЫ ВЫИГРАЛИ: ${actualPrize.name}`;
+    if (resultDesc) resultDesc.textContent=actualPrize.desc;
+    if (resultModal) resultModal.classList.remove('hidden');
+    
+    createConfetti();
+    debugLog("Выигран приз колеса фортуны", { prize: actualPrize.name });
+}
+
+function closePrizeModal(){
+    const resultModal = document.getElementById('prize-modal');
+    const wheelContainer = document.getElementById('wheel-container');
+    
+    if (resultModal) resultModal.classList.add('hidden');
+    if (wheelContainer) wheelContainer.classList.add('hidden');
+    
+    setTimeout(()=>{wheelActivated=false;},86400000);
+}
+
+function createConfetti(){
+    const colors=['#F6E05E','#48BB78','#4299E1','#ED8936','#9F7AEA','#F56565'];
+    for(let i=0;i<150;i++){
+        const confetti=document.createElement('div');
+        confetti.className = 'confetti';
+        confetti.style.cssText=`position:fixed;width:12px;height:12px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'0'};left:${Math.random()*100}vw;top:-20px;z-index:99999;pointer-events:none;`;
+        document.body.appendChild(confetti);
+        confetti.animate([
+            {transform:'translateY(0) rotate(0deg)',opacity:1},
+            {transform:`translateY(${window.innerHeight+20}px) rotate(${360+Math.random()*360}deg)`,opacity:0}
+        ],{
+            duration:2000+Math.random()*2000,
+            easing:'cubic-bezier(0.215,0.610,0.355,1)'
+        }).onfinish=()=>confetti.remove();
+    }
+}
+
+function activateSecretSkin(){
+    document.body.classList.add('secret-skin-active');
+    localStorage.setItem('secretSkin','true');
+    localStorage.setItem('secretSkinExpires',new Date(Date.now()+86400000).toISOString());
+    setTimeout(()=>{
+        document.body.classList.remove('secret-skin-active');
+        localStorage.removeItem('secretSkin');
+        localStorage.removeItem('secretSkinExpires');
+    },86400000);
+}
+
+function showNotification(text){
+    const notification=document.createElement('div');
+    notification.className = 'notification';
+    notification.textContent=text;
+    notification.style.position='fixed';
+    notification.style.top='20px';
+    notification.style.left='50%';
+    notification.style.transform='translateX(-50%)';
+    notification.style.padding='10px 15px';
+    notification.style.background='linear-gradient(135deg, #667eea, #764ba2)';
+    notification.style.color='white';
+    notification.style.borderRadius='8px';
+    notification.style.zIndex='10000';
+    notification.style.fontWeight='bold';
+    notification.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';
+    document.body.appendChild(notification);
+    setTimeout(()=>notification.remove(),3000);
 }
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
@@ -272,7 +411,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('nick').value = savedNick;
     nick = savedNick;
     
-    // Проверяем на секретное имя
+    // Проверяем на секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     // Инициализируем Firebase
@@ -294,10 +433,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         localStorage.setItem('mathBattleNick', newNick);
         nick = newNick;
         
-        // Проверяем на секретное имя
+        // Проверяем на секретное имя (работает, но не показывает)
         checkSecretName(newNick);
         
-        // Проверка на секретное слово для колеса фортуны
+        // Проверка на секретное слово для колеса фортуны (работает, но не показывает)
         if (checkForSecretWord(newNick) && !wheelActivated) {
             setTimeout(() => {
                 activateWheel();
@@ -305,7 +444,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
     
-    debugLog("Приложение загружено", { firebaseReady, hasDoubleXP });
+    debugLog("Приложение загружено", { firebaseReady, hasDoubleXP: "скрыто" });
 });
 
 function checkUrlForRoomCode() {
@@ -399,7 +538,7 @@ function startSingleGame() {
     document.getElementById("live-results").classList.add("hidden");
     
     startGame();
-    debugLog("Одиночная игра начата", { questions: questions.length, nick, hasDoubleXP });
+    debugLog("Одиночная игра начата", { questions: questions.length, nick });
 }
 
 // ========== МУЛЬТИПЛЕЕР ==========
@@ -410,7 +549,7 @@ async function createRoom() {
         return;
     }
     
-    // Проверяем секретное имя
+    // Проверяем секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
@@ -427,7 +566,7 @@ async function createRoom() {
     }
     
     showLoader(true);
-    debugLog("Создание комнаты...", { questionCount, timePerQuestion, hasDoubleXP });
+    debugLog("Создание комнаты...", { questionCount, timePerQuestion });
     
     try {
         await db.enableNetwork();
@@ -450,7 +589,7 @@ async function createRoom() {
                 joinedAt: new Date().toISOString(),
                 lastUpdate: new Date().toISOString(),
                 isCreator: true,
-                hasDoubleXP: hasDoubleXP
+                hasDoubleXP: hasDoubleXP // Сохраняем, но не показываем
             }],
             status: "waiting",
             questions: roomQuestions,
@@ -463,7 +602,7 @@ async function createRoom() {
         
         await db.collection("rooms").doc(roomId).set(roomData);
         
-        debugLog("✅ Комната создана успешно!", { roomId, nick, hasDoubleXP });
+        debugLog("✅ Комната создана успешно!", { roomId, nick });
         
         // Показываем лобби
         showLobby();
@@ -490,7 +629,7 @@ async function joinRoom() {
         return;
     }
     
-    // Проверяем секретное имя
+    // Проверяем секретное имя (работает, но не показывает)
     checkSecretName(nick);
     
     if (!firebaseReady || !db) {
@@ -540,7 +679,7 @@ async function joinRoom() {
             joinedAt: new Date().toISOString(),
             lastUpdate: new Date().toISOString(),
             isCreator: false,
-            hasDoubleXP: hasDoubleXP
+            hasDoubleXP: hasDoubleXP // Сохраняем, но не показываем
         };
         
         await roomRef.update({
@@ -550,7 +689,7 @@ async function joinRoom() {
         
         isCreator = false;
         
-        debugLog("✅ Успешно присоединился к комнате", { roomId, nick, hasDoubleXP });
+        debugLog("✅ Успешно присоединился к комнате", { roomId, nick });
         
         showLobby();
         listenToRoom();
@@ -580,10 +719,10 @@ function showLobby() {
     
     document.getElementById("room-code-display").textContent = roomId;
     
-    debugLog("Лобби показано", { roomId, isCreator, hasDoubleXP });
+    debugLog("Лобби показано", { roomId, isCreator });
 }
 
-// ========== ОБНОВЛЕНИЕ ССЫЛКИ ДЛЯ ПРИГЛАШЕНИЯ (ОТКРЫВАЕТСЯ В НОВОЙ ВКЛАДКЕ) ==========
+// ========== ОБНОВЛЕНИЕ ССЫЛКИ ДЛЯ ПРИГЛАШЕНИЯ ==========
 function updateShareLink() {
     const currentUrl = window.location.href.split('?')[0];
     const shareUrl = `${currentUrl}?room=${roomId}`;
@@ -693,16 +832,6 @@ function updateLobbyInfo(room) {
                     <span style="color: #ed8936; font-size: 18px;">${timePerQuestion} сек</span>
                 </div>
             </div>
-            ${hasDoubleXP ? `
-                <div style="margin-top: 10px; padding: 10px; background: linear-gradient(135deg, #FFD700, #FFA500); border-radius: 8px; color: #000; font-weight: bold; text-align: center;">
-                    ⚡ ВАУ! У вас ДВОЙНОЙ опыт за ответы! ⚡
-                </div>
-            ` : ''}
-            ${isCreator ? `
-                <div style="margin-top: 10px; font-size: 14px; color: #718096;">
-                    <em>Вы создатель комнаты и можете начать игру</em>
-                </div>
-            ` : ''}
         </div>
     `;
 }
@@ -720,13 +849,11 @@ function updatePlayersList(room) {
         let playerClass = "player-card";
         if (player.ready) playerClass += " ready";
         if (player.isCreator) playerClass += " creator";
-        if (player.hasDoubleXP) playerClass += " double-xp";
         
         html += `
-            <div class="${playerClass}" style="${player.hasDoubleXP ? 'border: 3px solid gold; background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1));' : ''}">
+            <div class="${playerClass}">
                 <strong>${player.nick}</strong>
                 ${player.isCreator ? "👑" : ""}
-                ${player.hasDoubleXP ? "⚡" : ""}
                 <div style="margin-top: 8px; font-size: 14px;">
                     ${player.ready ? 
                         '<span style="color: #38a169;">✅ Готов</span>' : 
@@ -736,11 +863,6 @@ function updatePlayersList(room) {
                 ${player.score > 0 ? `
                     <div style="margin-top: 5px; font-size: 12px; color: #d69e2e;">
                         🏆 ${player.score} очков
-                    </div>
-                ` : ''}
-                ${player.hasDoubleXP ? `
-                    <div style="margin-top: 5px; font-size: 10px; color: #D69E2E; font-weight: bold;">
-                        ✨ ДВОЙНОЙ опыт
                     </div>
                 ` : ''}
             </div>
@@ -917,51 +1039,7 @@ function startCountdown() {
     }, 1000);
 }
 
-// ========== МУЛЬТИПЛЕЕРНАЯ ИГРА ==========
-function startMultiplayerGame(room) {
-    if (gameStarted) return;
-    
-    gameStarted = true;
-    debugLog("Запускаем мультиплеерную игру...", room);
-    
-    questions = room.questions || getUniqueQuestions(room.questionCount || 20);
-    
-    document.getElementById("lobby").classList.add("hidden");
-    document.getElementById("game").classList.remove("hidden");
-    document.getElementById("live-results").classList.remove("hidden");
-    
-    currentQuestionIndex = 0;
-    score = 0;
-    userAnswers = [];
-    startTime = new Date();
-    
-    // Показываем уведомление о двойном опыте, если есть
-    if (hasDoubleXP) {
-        const doubleXPNotification = document.createElement('div');
-        doubleXPNotification.className = 'notification';
-        doubleXPNotification.textContent = "⚡ У вас активен ДВОЙНОЙ опыт! Все ответы дают x2 очков!";
-        doubleXPNotification.style.background = 'linear-gradient(135deg, #FFD700, #FFA500)';
-        doubleXPNotification.style.color = '#000';
-        doubleXPNotification.style.position = 'fixed';
-        doubleXPNotification.style.top = '60px';
-        doubleXPNotification.style.left = '50%';
-        doubleXPNotification.style.transform = 'translateX(-50%)';
-        doubleXPNotification.style.padding = '10px 15px';
-        doubleXPNotification.style.borderRadius = '8px';
-        doubleXPNotification.style.zIndex = '10000';
-        doubleXPNotification.style.fontWeight = 'bold';
-        document.body.appendChild(doubleXPNotification);
-        setTimeout(() => doubleXPNotification.remove(), 5000);
-    }
-    
-    setTimeout(() => {
-        startGame();
-        debugLog("Игра начата для игрока", { nick, questions: questions.length, hasDoubleXP });
-    }, 1000);
-    
-    listenToProgress();
-}
-
+// ========== LIVE РЕЗУЛЬТАТЫ (ИСПРАВЛЕННЫЕ) ==========
 function listenToProgress() {
     if (!roomId || !db) return;
     
@@ -982,23 +1060,19 @@ function listenToProgress() {
         let html = "";
         sortedPlayers.forEach((player, index) => {
             const place = index + 1;
-            const progress = player.progress || 0;
-            const total = room.questionCount || 20;
-            const percent = total > 0 ? Math.round((progress / total) * 100) : 0;
+            // ИСПРАВЛЕНО: player.progress - это текущий номер вопроса, а не правильные ответы!
             
             html += `
-                <div class="result-row" style="${player.hasDoubleXP ? 'border-left: 4px solid gold; background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 165, 0, 0.05));' : ''}">
+                <div class="result-row">
                     <div>
                         <strong>${place}. ${player.nick}</strong>
                         ${player.isCreator ? "👑" : ""}
-                        ${player.hasDoubleXP ? " ⚡" : ""}
                     </div>
                     <div>
                         <strong>${player.score}</strong> очков
-                        ${player.hasDoubleXP ? '<br><small style="color: #D69E2E;">(x2 опыт)</small>' : ''}
                     </div>
                     <div>
-                        ${progress}/${total} (${percent}%)
+                        Вопрос: ${player.progress || 0}/${room.questionCount || 20}
                     </div>
                 </div>
             `;
@@ -1006,6 +1080,32 @@ function listenToProgress() {
         
         resultsContent.innerHTML = html;
     });
+}
+
+// ========== МУЛЬТИПЛЕЕРНАЯ ИГРА ==========
+function startMultiplayerGame(room) {
+    if (gameStarted) return;
+    
+    gameStarted = true;
+    debugLog("Запускаем мультиплеерную игру...", room);
+    
+    questions = room.questions || getUniqueQuestions(room.questionCount || 20);
+    
+    document.getElementById("lobby").classList.add("hidden");
+    document.getElementById("game").classList.remove("hidden");
+    document.getElementById("live-results").classList.remove("hidden");
+    
+    currentQuestionIndex = 0;
+    score = 0;
+    userAnswers = [];
+    startTime = new Date();
+    
+    setTimeout(() => {
+        startGame();
+        debugLog("Игра начата для игрока", { nick, questions: questions.length });
+    }, 1000);
+    
+    listenToProgress();
 }
 
 async function updatePlayerProgress() {
@@ -1058,9 +1158,7 @@ function startGame() {
     updateProgress();
     
     debugLog("Игра начата", { 
-        totalQuestions: questions.length,
-        hasDoubleXP,
-        secretNames: SECRET_NAMES
+        totalQuestions: questions.length
     });
 }
 
@@ -1129,7 +1227,7 @@ function showQuestion() {
             let points = 100 - Math.floor(elapsedTime / 5) * 5;
             if (points < 0) points = 0;
             
-            // Применяем двойной опыт, если есть
+            // Применяем двойной опыт, если есть (работает, но не показывается)
             if (hasDoubleXP) {
                 points *= 2;
             }
@@ -1139,7 +1237,7 @@ function showQuestion() {
             if (isCorrect) {
                 label.classList.add("correct");
                 score += points;
-                debugLog(`Правильный ответ! +${points} очков ${hasDoubleXP ? '(x2)' : ''}`, { 
+                debugLog(`Правильный ответ! +${points} очков`, { 
                     question: currentQuestionIndex + 1, 
                     time: elapsedTime,
                     doubleXP: hasDoubleXP
@@ -1217,9 +1315,7 @@ function finishGame() {
         score: score,
         time: elapsedSec,
         correctAnswers: userAnswers.filter(a => a.isCorrect).length,
-        totalQuestions: questions.length,
-        hasDoubleXP,
-        doubleXPBonus: hasDoubleXP ? "активен" : "не активен"
+        totalQuestions: questions.length
     });
 }
 
@@ -1232,11 +1328,9 @@ function showSingleResults(elapsedSec) {
     const resElement = document.getElementById("final-result");
     if (resElement) {
         resElement.innerHTML = `
-            <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков
-            ${hasDoubleXP ? '<span style="color: gold; font-weight: bold;"> (с ДВОЙНЫМ опытом!)</span>' : ''}<br>
+            <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков<br>
             Правильных ответов: <strong>${correctAnswers} из ${questions.length}</strong> (${accuracy}%)<br>
             Время: ${min} мин ${sec} сек
-            ${hasDoubleXP ? '<br><span style="color: #D69E2E; font-weight: bold;">🎉 Секретное имя дало вам ДВОЙНОЙ опыт!</span>' : ''}
         `;
     }
     
@@ -1316,26 +1410,15 @@ async function showMultiplayerResults() {
         const resElement = document.getElementById("final-result");
         if (resElement) {
             resElement.innerHTML = `
-                <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков
-                ${hasDoubleXP ? '<span style="color: gold; font-weight: bold;"> (с ДВОЙНЫМ опытом!)</span>' : ''}<br>
+                <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков<br>
                 Место: <strong>${playerPlace} из ${sortedPlayers.length}</strong><br>
                 Правильных ответов: <strong>${correctAnswers} из ${questions.length}</strong> (${accuracy}%)
-                ${hasDoubleXP ? '<br><span style="color: #D69E2E; font-weight: bold;">🎉 Секретное имя дало вам ДВОЙНОЙ опыт!</span>' : ''}
             `;
         }
         
         if (isWinner) {
             const winnerElement = document.getElementById("winner");
             if (winnerElement) winnerElement.classList.remove("hidden");
-            
-            // Добавляем спецэффекты для победителя
-            if (hasDoubleXP) {
-                const winnerIcon = document.querySelector('.winner-icon');
-                if (winnerIcon) winnerIcon.textContent = "⚡🏆⚡";
-                const winnerText = document.querySelector('.winner-text');
-                if (winnerText) winnerText.style.color = 'gold';
-                winnerText.textContent = "ПОБЕДА С ДВОЙНЫМ ОПЫТОМ!";
-            }
         }
         
         // Таблица результатов
@@ -1348,13 +1431,12 @@ async function showMultiplayerResults() {
                 const progress = player.progress || 0;
                 const playerAccuracy = progress > 0 ? Math.round((player.score / (progress * 100)) * 100) || 0 : 0;
                 const finishTime = player.finished ? "Завершил" : "Не завершил";
-                const hasDoubleXP = player.hasDoubleXP || false;
                 
                 html += `
-                    <tr style="${hasDoubleXP ? 'background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 165, 0, 0.05));' : ''}">
+                    <tr>
                         <td>${place} ${place === 1 ? "🏆" : place === 2 ? "🥈" : place === 3 ? "🥉" : ""}</td>
-                        <td>${player.nick} ${player.isCreator ? "👑" : ""} ${hasDoubleXP ? "⚡" : ""}</td>
-                        <td><strong>${player.score}</strong> ${hasDoubleXP ? '<small style="color: #D69E2E;">(x2)</small>' : ''}</td>
+                        <td>${player.nick} ${player.isCreator ? "👑" : ""}</td>
+                        <td><strong>${player.score}</strong></td>
                         <td>${finishTime}</td>
                         <td>${playerAccuracy}%</td>
                     </tr>
@@ -1369,8 +1451,7 @@ async function showMultiplayerResults() {
         debugLog("Мультиплеерные результаты показаны", {
             place: playerPlace,
             totalPlayers: sortedPlayers.length,
-            isWinner: isWinner,
-            hasDoubleXP: hasDoubleXP
+            isWinner: isWinner
         });
         
     } catch (error) {
@@ -1379,6 +1460,7 @@ async function showMultiplayerResults() {
     }
 }
 
+// ========== ДЕТАЛЬНЫЕ РЕЗУЛЬТАТЫ (ИСПРАВЛЕННЫЕ - БЕЗ СЕКРЕТНЫХ ИМЁН) ==========
 function showDetailedResults() {
     if (detailedResultsShown) return;
     
@@ -1394,10 +1476,7 @@ function showDetailedResults() {
     let html = "";
     let correctCount = 0;
     let totalPoints = 0;
-    let totalDoubleXPPoints = 0;
-    let totalTime = 0;
     
-    // Проходим по всем ответам пользователя
     userAnswers.forEach((answer, index) => {
         const questionNumber = index + 1;
         const resultClass = answer.isCorrect ? "correct" : "wrong";
@@ -1406,151 +1485,61 @@ function showDetailedResults() {
         if (answer.isCorrect) {
             correctCount++;
             totalPoints += answer.points;
-            if (answer.doubleXP) {
-                totalDoubleXPPoints += answer.points / 2; // Половина - бонус
-            }
         }
         
-        totalTime += answer.time;
-        
         html += `
-            <div class="question-result ${resultClass}" style="margin-bottom: 15px; padding: 15px; border-radius: 8px; ${answer.isCorrect ? 'background: rgba(72, 187, 120, 0.1); border-left: 4px solid #48bb78;' : 'background: rgba(245, 101, 101, 0.1); border-left: 4px solid #f56565;'} ${answer.doubleXP ? 'border-right: 3px solid gold;' : ''}">
-                <div style="margin-bottom: 8px;">
-                    <strong style="font-size: 16px;">${icon} Вопрос ${questionNumber}:</strong>
-                    <div style="font-size: 14px; margin-top: 5px;">${answer.question}</div>
-                </div>
-                
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
-                    <div>
-                        <div style="color: #718096; font-size: 13px;">Ваш ответ:</div>
-                        <div style="font-weight: bold; ${!answer.isCorrect ? 'color: #f56565;' : ''}">${answer.userAnswer}</div>
-                    </div>
-                    <div>
-                        <div style="color: #718096; font-size: 13px;">Правильный ответ:</div>
-                        <div style="font-weight: bold; color: #48bb78;">${answer.correctAnswer}</div>
-                    </div>
-                </div>
-                
-                ${answer.explanation ? `
-                    <div style="margin-top: 10px; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 6px; border-left: 3px solid #667eea;">
-                        <div style="color: #718096; font-size: 13px; margin-bottom: 3px;">📚 Объяснение:</div>
-                        <div style="font-size: 14px;">${answer.explanation}</div>
-                    </div>
-                ` : ''}
-                
-                <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 13px; color: #718096;">
-                    <div>
-                        <strong>Время:</strong> ${answer.time} сек
-                    </div>
-                    <div>
-                        <strong>Очки:</strong> 
-                        ${answer.isCorrect ? 
-                            `<span style="color: #d69e2e; font-weight: bold;">+${answer.points}</span>` : 
-                            '<span style="color: #a0aec0;">0</span>'
-                        }
-                        ${answer.doubleXP ? '<span style="color: gold; margin-left: 5px;">⚡</span>' : ''}
-                    </div>
+            <div class="question-result ${resultClass}">
+                <div><strong>${icon} Вопрос ${questionNumber}:</strong> ${answer.question}</div>
+                <div><strong>Ваш ответ:</strong> ${answer.userAnswer}</div>
+                <div><strong>Правильный ответ:</strong> ${answer.correctAnswer}</div>
+                <div><strong>Объяснение:</strong> ${answer.explanation}</div>
+                <div style="margin-top: 5px; font-size: 14px; color: #718096;">
+                    <strong>Время:</strong> ${answer.time} сек 
+                    <strong>Очки:</strong> ${answer.points}
                 </div>
             </div>
         `;
     });
     
-    // Рассчитываем статистику
     const accuracy = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
+    const totalTime = userAnswers.reduce((sum, answer) => sum + answer.time, 0);
     const avgTime = userAnswers.length > 0 ? Math.round(totalTime / userAnswers.length) : 0;
     
-    // Создаем статистику
     const statsHtml = `
-        <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-            <h4 style="margin-top: 0; color: #4a5568; margin-bottom: 20px; text-align: center;">📈 Статистика игры</h4>
-            
-            ${hasDoubleXP ? `
-                <div style="background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-weight: bold; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);">
-                    ⚡ БОНУС ЗА СЕКРЕТНОЕ ИМЯ: +${totalDoubleXPPoints} очков! ⚡
+        <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-radius: 12px; border-left: 5px solid #667eea;">
+            <h4 style="margin-top: 0; color: #4a5568;">📈 Статистика игры</h4>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 12px; color: #718096;">Правильных ответов</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #48bb78;">${correctCount}/${questions.length}</div>
+                    <div style="font-size: 14px; color: #718096;">${accuracy}%</div>
                 </div>
-            ` : ''}
-            
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-top: 15px;">
-                <!-- Правильные ответы -->
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
-                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Правильных ответов</div>
-                    <div style="font-size: 28px; font-weight: 700; color: #48bb78;">${correctCount}</div>
-                    <div style="font-size: 14px; color: #718096;">из ${questions.length}</div>
-                    <div style="margin-top: 5px; font-size: 16px; font-weight: 600; color: #48bb78;">${accuracy}%</div>
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 12px; color: #718096;">Общее время</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #4299e1;">${totalTime} сек</div>
+                    <div style="font-size: 14px; color: #718096;">${avgTime} сек/вопрос</div>
                 </div>
-                
-                <!-- Время -->
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
-                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Время ответов</div>
-                    <div style="font-size: 28px; font-weight: 700; color: #4299e1;">${totalTime}с</div>
-                    <div style="font-size: 14px; color: #718096;">всего</div>
-                    <div style="margin-top: 5px; font-size: 16px; font-weight: 600; color: #4299e1;">${avgTime}с/вопрос</div>
-                </div>
-                
-                <!-- Очки -->
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
-                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Общий счет</div>
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
+                    <div style="font-size: 12px; color: #718096;">Общий счет</div>
                     <div style="font-size: 28px; font-weight: 700; color: #d69e2e;">${score}</div>
                     <div style="font-size: 14px; color: #718096;">очков</div>
-                    ${hasDoubleXP ? `
-                        <div style="margin-top: 5px; font-size: 12px; color: gold; font-weight: bold;">
-                            ⚡ x2 опыт
-                        </div>
-                    ` : ''}
                 </div>
             </div>
-            
-            ${hasDoubleXP ? `
-                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 215, 0, 0.1); border-radius: 8px; text-align: center; border: 1px solid rgba(255, 215, 0, 0.3);">
-                    <div style="color: #D69E2E; font-weight: bold; font-size: 14px;">
-                        ⚡ Вы использовали секретное имя и получили ДВОЙНОЙ опыт!
-                    </div>
-                </div>
-            ` : ''}
         </div>
     `;
     
-    // Добавляем заголовок для детальных результатов
-    const detailedHeader = `
-        <div style="margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px;">
-            <h4 style="margin: 0; font-size: 16px; display: flex; align-items: center; justify-content: center;">
-                📋 Детальные результаты по каждому вопросу
-            </h4>
-        </div>
-    `;
+    answersListEl.innerHTML = statsHtml + html;
     
-    answersListEl.innerHTML = statsHtml + detailedHeader + html;
-    
-    // Добавляем кнопку для скрытия/показа деталей
     const detailsBtn = document.getElementById("details-btn");
     if (detailsBtn) {
         detailsBtn.textContent = "📊 Скрыть детальные результаты";
         detailsBtn.onclick = () => {
-            const isHidden = detailedResultsEl.classList.contains("hidden");
-            if (isHidden) {
-                detailedResultsEl.classList.remove("hidden");
-                detailsBtn.textContent = "📊 Скрыть детальные результаты";
-                // Прокручиваем к результатам
-                detailedResultsEl.scrollIntoView({ behavior: 'smooth' });
-            } else {
-                detailedResultsEl.classList.add("hidden");
-                detailsBtn.textContent = "📊 Показать детальные результаты";
-            }
+            detailedResultsEl.classList.toggle("hidden");
+            detailsBtn.textContent = detailedResultsEl.classList.contains("hidden") 
+                ? "📊 Показать детальные результаты" 
+                : "📊 Скрыть детальные результаты";
         };
     }
-    
-    // Прокручиваем к результатам
-    setTimeout(() => {
-        detailedResultsEl.scrollIntoView({ behavior: 'smooth' });
-    }, 300);
-    
-    debugLog("Детальные результаты показаны", {
-        correctAnswers: correctCount,
-        totalQuestions: questions.length,
-        accuracy: accuracy + '%',
-        totalScore: score,
-        hasDoubleXP: hasDoubleXP
-    });
 }
 
 // ========== УПРАВЛЕНИЕ КОМНАТОЙ ==========
@@ -1660,170 +1649,6 @@ async function leaveRoom() {
     }
     
     location.reload();
-}
-
-// ========== КОЛЕСО ФОРТУНЫ ==========
-const wheelPrizes = [
-    {name:"Удвоение",icon:"💰",color:"#F6E05E",desc:"Следующий результат ×2",effect:()=>{localStorage.setItem('doublePoints','true');showNotification("💰 Удвоение очков активировано!");}},
-    {name:"Бессмертие",icon:"🛡️",color:"#48BB78",desc:"3 ошибки не считаются",effect:()=>{localStorage.setItem('immortality','3');showNotification("🛡️ Бессмертие активировано (3 ошибки)!");}},
-    {name:"Секретный скин",icon:"🎨",color:"#9F7AEA",desc:"Эксклюзивный дизайн",effect:()=>{activateSecretSkin();showNotification("🎨 Секретный скин активирован!");}},
-    {name:"Турбо-режим",icon:"⚡",color:"#ED8936",desc:"+50% времени",effect:()=>{localStorage.setItem('turboMode','true');showNotification("⚡ Турбо-режим активирован!");}},
-    {name:"Пропуск",icon:"➡️",color:"#4299E1",desc:"Пропустить 1 вопрос",effect:()=>{localStorage.setItem('skipQuestion','1');showNotification("➡️ Пропуск вопроса активирован!");}},
-    {name:"Бонус+500",icon:"➕",color:"#F56565",desc:"+500 очков",effect:()=>{const bp=(parseInt(localStorage.getItem('bonusPoints')||'0')+500);localStorage.setItem('bonusPoints',bp);showNotification(`➕ +${bp} бонусных очков!`);}},
-    {name:"Эксперт",icon:"👑",color:"#D69E2E",desc:"Золотая рамка",effect:()=>{localStorage.setItem('expertFrame',new Date(Date.now()+86400000).toISOString());showNotification("👑 Статус Эксперт активирован!");}},
-    {name:"Сюрприз",icon:"🎁",color:"#38B2AC",desc:"Случайный приз",effect:function(){const p=wheelPrizes.filter(x=>x.name!=="Сюрприз");const rp=p[Math.floor(Math.random()*p.length)];rp.effect();return rp;}}
-];
-
-function checkForSecretWord(text) {
-    const words=['эпштейн','epstein','эпштей','epshtein','фортуна','wheel','колесо','секрет','ep'];
-    const lower=text.toLowerCase();
-    return words.some(word=>lower.includes(word));
-}
-
-function activateWheel(){
-    if(wheelActivated)return;
-    wheelActivated=true;
-    const wheelContainer = document.getElementById('wheel-container');
-    if (wheelContainer) wheelContainer.classList.remove('hidden');
-    createWheel();
-    debugLog("Колесо фортуны активировано");
-}
-
-function createWheel(){
-    const wheel=document.getElementById('wheel');
-    if (!wheel) return;
-    
-    wheel.innerHTML='<div class="wheel-pointer"></div>';
-    const total=wheelPrizes.length;
-    const angle=360/total;
-    
-    wheelPrizes.forEach((prize,index)=>{
-        const section=document.createElement('div');
-        section.className='wheel-section';
-        const content=document.createElement('div');
-        content.className='wheel-section-content';
-        content.innerHTML=`<span class="wheel-icon">${prize.icon}</span><span class="wheel-text">${prize.name}</span>`;
-        section.appendChild(content);
-        const rotate=angle*index;
-        const skew=90-angle;
-        section.style.transform=`rotate(${rotate}deg) skewY(${skew}deg)`;
-        section.style.background=`linear-gradient(135deg,${prize.color},${darkenColor(prize.color,20)})`;
-        if(index%2===0)section.style.filter='brightness(0.9)';
-        section.style.border='2px solid rgba(255,255,255,0.4)';
-        wheel.appendChild(section);
-    });
-}
-
-function darkenColor(color,percent){
-    color=color.replace('#','');
-    let r=parseInt(color.substring(0,2),16);
-    let g=parseInt(color.substring(2,4),16);
-    let b=parseInt(color.substring(4,6),16);
-    r=Math.max(0,Math.min(255,Math.floor(r*(100-percent)/100)));
-    g=Math.max(0,Math.min(255,Math.floor(g*(100-percent)/100)));
-    b=Math.max(0,Math.min(255,Math.floor(b*(100-percent)/100)));
-    return `#${r.toString(16).padStart(2,'0')}${g.toString(16).padStart(2,'0')}${b.toString(16).padStart(2,'0')}`;
-}
-
-function spinWheel(){
-    const wheel=document.getElementById('wheel');
-    const btn=document.getElementById('spin-btn');
-    if (!wheel || !btn) return;
-    
-    btn.disabled=true;
-    btn.textContent='🌀 ВРАЩАЕТСЯ...';
-    const rotations=3+Math.floor(Math.random()*6);
-    const prizeIndex=Math.floor(Math.random()*wheelPrizes.length);
-    const angle=360/wheelPrizes.length;
-    const finalAngle=rotations*360+prizeIndex*angle-angle/2;
-    wheel.style.setProperty('--rotation',`${finalAngle}deg`);
-    wheel.classList.add('spinning');
-    setTimeout(()=>{
-        showPrizeResult(prizeIndex);
-        wheel.classList.remove('spinning');
-        btn.disabled=false;
-        btn.textContent='🎯 КРУТИТЬ КОЛЕСО!';
-    },3000);
-}
-
-function showPrizeResult(index){
-    const prize=wheelPrizes[index];
-    let actualPrize=prize;
-    if(prize.name==="Сюрприз"){
-        actualPrize=prize.effect();
-    }else{
-        prize.effect();
-    }
-    
-    const resultIcon = document.getElementById('prize-icon');
-    const resultText = document.getElementById('prize-title');
-    const resultDesc = document.getElementById('prize-description');
-    const resultModal = document.getElementById('prize-modal');
-    
-    if (resultIcon) resultIcon.textContent=actualPrize.icon;
-    if (resultText) resultText.textContent=`ВЫ ВЫИГРАЛИ: ${actualPrize.name}`;
-    if (resultDesc) resultDesc.textContent=actualPrize.desc;
-    if (resultModal) resultModal.classList.remove('hidden');
-    
-    createConfetti();
-    debugLog("Выигран приз колеса фортуны", { prize: actualPrize.name });
-}
-
-function closePrizeModal(){
-    const resultModal = document.getElementById('prize-modal');
-    const wheelContainer = document.getElementById('wheel-container');
-    
-    if (resultModal) resultModal.classList.add('hidden');
-    if (wheelContainer) wheelContainer.classList.add('hidden');
-    
-    setTimeout(()=>{wheelActivated=false;},86400000);
-}
-
-function createConfetti(){
-    const colors=['#F6E05E','#48BB78','#4299E1','#ED8936','#9F7AEA','#F56565'];
-    for(let i=0;i<150;i++){
-        const confetti=document.createElement('div');
-        confetti.className = 'confetti';
-        confetti.style.cssText=`position:fixed;width:12px;height:12px;background:${colors[Math.floor(Math.random()*colors.length)]};border-radius:${Math.random()>0.5?'50%':'0'};left:${Math.random()*100}vw;top:-20px;z-index:99999;pointer-events:none;`;
-        document.body.appendChild(confetti);
-        confetti.animate([
-            {transform:'translateY(0) rotate(0deg)',opacity:1},
-            {transform:`translateY(${window.innerHeight+20}px) rotate(${360+Math.random()*360}deg)`,opacity:0}
-        ],{
-            duration:2000+Math.random()*2000,
-            easing:'cubic-bezier(0.215,0.610,0.355,1)'
-        }).onfinish=()=>confetti.remove();
-    }
-}
-
-function activateSecretSkin(){
-    document.body.classList.add('secret-skin-active');
-    localStorage.setItem('secretSkin','true');
-    localStorage.setItem('secretSkinExpires',new Date(Date.now()+86400000).toISOString());
-    setTimeout(()=>{
-        document.body.classList.remove('secret-skin-active');
-        localStorage.removeItem('secretSkin');
-        localStorage.removeItem('secretSkinExpires');
-    },86400000);
-}
-
-function showNotification(text){
-    const notification=document.createElement('div');
-    notification.className = 'notification';
-    notification.textContent=text;
-    notification.style.position='fixed';
-    notification.style.top='20px';
-    notification.style.left='50%';
-    notification.style.transform='translateX(-50%)';
-    notification.style.padding='10px 15px';
-    notification.style.background='linear-gradient(135deg, #667eea, #764ba2)';
-    notification.style.color='white';
-    notification.style.borderRadius='8px';
-    notification.style.zIndex='10000';
-    notification.style.fontWeight='bold';
-    notification.style.boxShadow='0 4px 12px rgba(0,0,0,0.3)';
-    document.body.appendChild(notification);
-    setTimeout(()=>notification.remove(),3000);
 }
 
 // ========== ОЧИСТКА СТАРЫХ КОМНАТ ==========
