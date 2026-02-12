@@ -15,22 +15,9 @@ try {
         firebase.initializeApp(firebaseConfig);
     }
     db = firebase.firestore();
-    
-    // Включаем кэширование для офлайн-работы
-    db.enablePersistence()
-        .then(() => {
-            console.log("✅ Firebase работает с кэшированием");
-            updateConnectionStatus(true, true); // Показываем только создателю
-        })
-        .catch((err) => {
-            console.log("⚠️ Офлайн кэширование недоступно:", err);
-            updateConnectionStatus(false, true);
-        });
-    
     console.log("✅ Firebase успешно инициализирован");
 } catch (error) {
     console.error("❌ Ошибка инициализации Firebase:", error);
-    updateConnectionStatus(false, true);
 }
 
 // ========== ГЛОБАЛЬНЫЕ ПЕРЕМЕННЫЕ ==========
@@ -51,10 +38,9 @@ let roomUnsubscribe = null;
 let progressUnsubscribe = null;
 let isPageUnloading = false;
 let detailedResultsShown = false;
-
-// Секретные имена для двойного опыта
-const SECRET_NAMES = ["Пидиди", "Эпштейн", "Чахапов", "Мегаманс"];
 let hasDoubleXP = false;
+let baseScoreMultiplier = 1;
+let specialNames = ['эпштейн', 'пидиди', 'мегаманс', 'чахапов'];
 
 // ========== ВОПРОСЫ (50 штук) ==========
 const allQuestions = [
@@ -133,26 +119,36 @@ function generateRoomCode() {
     return code;
 }
 
-function showLoader(show) {
-    document.getElementById('loader').classList.toggle('hidden', !show);
+function showLoader(show, text = 'Загрузка...') {
+    const loader = document.getElementById('loader');
+    if (!loader) return;
+    
+    if (show) {
+        loader.innerHTML = `
+            <div class="spinner"></div>
+            <div class="loader-text">${text}</div>
+        `;
+        loader.classList.remove('hidden');
+    } else {
+        loader.classList.add('hidden');
+    }
 }
 
-// Обновленная функция для отображения статуса подключения
-function updateConnectionStatus(connected, forceShow = false) {
+function updateConnectionStatus(connected) {
     const el = document.getElementById('connection-status');
     if (!el) return;
     
-    // Показываем статус только создателю комнаты или если принудительно
-    const shouldShow = forceShow || isCreator;
-    
-    if (connected && shouldShow) {
-        el.innerHTML = '<span class="status-online">✅ Онлайн</span>';
+    if (connected) {
+        el.innerHTML = '<span class="status-online">✅ Подключено к серверу</span>';
         el.classList.remove('hidden');
-    } else if (!connected && shouldShow) {
-        el.innerHTML = '<span class="status-offline">❌ Офлайн</span>';
-        el.classList.remove('hidden');
+        
+        // Автоскрытие через 3 секунды
+        setTimeout(() => {
+            el.classList.add('hidden');
+        }, 3000);
     } else {
-        el.classList.add('hidden');
+        el.innerHTML = '<span class="status-offline">❌ Нет подключения к серверу</span>';
+        el.classList.remove('hidden');
     }
 }
 
@@ -164,86 +160,131 @@ function debugLog(message, data = null) {
     const debugContent = document.getElementById('debug-content');
     if (debugContent) {
         const div = document.createElement('div');
-        div.style.cssText = 'margin: 2px 0; padding: 2px; border-bottom: 1px solid rgba(0,255,0,0.1);';
-        div.innerHTML = `<span style="color:#0f0">${logMessage}</span>`;
+        div.style.cssText = 'margin: 4px 0; padding: 4px; border-bottom: 1px solid #4a5568; font-family: monospace;';
+        div.innerHTML = `<span style="color:#48bb78">${logMessage}</span>`;
+        
         if (data) {
-            div.innerHTML += `<pre style="color:#ff0; margin:2px 0 2px 10px; font-size:10px;">${JSON.stringify(data, null, 2)}</pre>`;
+            const dataStr = typeof data === 'object' ? JSON.stringify(data, null, 2) : String(data);
+            div.innerHTML += `<pre style="color:#e2e8f0; margin:4px 0 4px 10px; font-size:11px; background:#2d3748; padding:8px; border-radius:4px; overflow-x:auto;">${dataStr}</pre>`;
         }
+        
         debugContent.appendChild(div);
         debugContent.scrollTop = debugContent.scrollHeight;
         
+        // Ограничиваем количество сообщений
         const children = debugContent.children;
-        if (children.length > 50) {
+        if (children.length > 100) {
             debugContent.removeChild(children[0]);
         }
     }
 }
 
-function showDebugInfo() {
-    document.getElementById('debug-panel').classList.toggle('hidden');
-    debugLog("Отладочная панель открыта");
+function toggleDebug() {
+    const debugPanel = document.getElementById('debug-panel');
+    if (debugPanel) {
+        debugPanel.classList.toggle('hidden');
+        if (!debugPanel.classList.contains('hidden')) {
+            debugLog("Отладочная панель открыта");
+        }
+    }
 }
 
 function clearDebug() {
-    document.getElementById('debug-content').innerHTML = '';
+    const debugContent = document.getElementById('debug-content');
+    if (debugContent) {
+        debugContent.innerHTML = '';
+        debugLog("Логи очищены");
+    }
 }
 
-function checkSecretName(name) {
-    const trimmedName = name.trim();
-    hasDoubleXP = SECRET_NAMES.some(secretName => 
-        trimmedName.toLowerCase() === secretName.toLowerCase()
-    );
+function showNotification(text, type = 'info') {
+    const colors = {
+        info: {bg: '#4299E1', color: 'white'},
+        success: {bg: '#48BB78', color: 'white'},
+        warning: {bg: '#ED8936', color: 'white'},
+        special: {bg: 'linear-gradient(135deg, #F6E05E, #D69E2E)', color: '#744210'}
+    };
     
-    return hasDoubleXP;
-}
-
-function showDoubleXPNotification() {
+    const color = colors[type] || colors.info;
+    
     const notification = document.createElement('div');
     notification.className = 'notification';
-    notification.textContent = "🎉 ВАУ! Вы используете секретное имя! Получаете ДВОЙНОЙ опыт за все ответы!";
-    notification.style.background = 'linear-gradient(135deg, #FFD700, #FFA500)';
-    notification.style.color = '#000';
+    notification.textContent = text;
+    notification.style.background = color.bg;
+    notification.style.color = color.color;
+    
     document.body.appendChild(notification);
     
+    // Автоматическое удаление
     setTimeout(() => {
-        notification.remove();
-    }, 5000);
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => notification.remove(), 300);
+    }, 3000);
+}
+
+// ========== ПРОВЕРКА СПЕЦИАЛЬНЫХ ИМЕН ==========
+function checkSpecialName(name) {
+    if (!name) return false;
+    
+    const lowerName = name.toLowerCase().trim();
+    return specialNames.some(special => lowerName === special);
+}
+
+function updateSpecialNameInfo() {
+    const nickInput = document.getElementById('nick');
+    const infoDiv = document.getElementById('special-nick-info');
+    
+    if (!nickInput || !infoDiv) return;
+    
+    const currentNick = nickInput.value.trim();
+    const isSpecial = checkSpecialName(currentNick);
+    
+    if (isSpecial) {
+        infoDiv.classList.remove('hidden');
+        infoDiv.innerHTML = `<strong>✨ БОНУС АКТИВИРОВАН!</strong> Никнейм "${currentNick}" дает x2 опыт!`;
+        infoDiv.style.background = 'linear-gradient(135deg, rgba(246, 224, 94, 0.2), rgba(214, 158, 46, 0.2))';
+        infoDiv.style.color = '#744210';
+        infoDiv.style.border = '2px solid #D69E2E';
+    } else {
+        infoDiv.classList.add('hidden');
+    }
 }
 
 // ========== ИНИЦИАЛИЗАЦИЯ ==========
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("🎮 Математическая Битва загружается...");
+    console.log("🎮 Математическая битва загружается...");
     
     // Настройка переключения режимов
-    document.getElementById("mode").addEventListener("change", function() {
-        const mode = this.value;
-        document.getElementById("single-settings").classList.toggle("hidden", mode !== "single");
-        document.getElementById("multi-settings").classList.toggle("hidden", mode !== "multi");
-    });
+    const modeSelect = document.getElementById("mode");
+    if (modeSelect) {
+        modeSelect.addEventListener("change", function() {
+            const mode = this.value;
+            document.getElementById("single-settings").classList.toggle("hidden", mode !== "single");
+            document.getElementById("multi-settings").classList.toggle("hidden", mode !== "multi");
+        });
+    }
     
     // Загрузка ника
     const savedNick = localStorage.getItem('mathBattleNick') || 'Игрок' + Math.floor(Math.random() * 1000);
-    document.getElementById('nick').value = savedNick;
-    nick = savedNick;
-    
-    // Проверка на секретное имя
-    if (checkSecretName(nick) && hasDoubleXP) {
-        setTimeout(() => {
-            showDoubleXPNotification();
-        }, 1000);
-    }
-    
-    // Сохранение ника при изменении
-    document.getElementById('nick').addEventListener('input', function() {
-        const newNick = this.value.trim();
-        localStorage.setItem('mathBattleNick', newNick);
-        nick = newNick;
+    const nickInput = document.getElementById('nick');
+    if (nickInput) {
+        nickInput.value = savedNick;
+        nick = savedNick;
         
-        // Проверка на секретное имя
-        if (checkSecretName(newNick) && hasDoubleXP) {
-            showDoubleXPNotification();
-        }
-    });
+        // Проверка специального имени
+        updateSpecialNameInfo();
+        
+        // Сохранение ника при изменении
+        nickInput.addEventListener('input', function() {
+            const newNick = this.value.trim();
+            localStorage.setItem('mathBattleNick', newNick);
+            nick = newNick;
+            
+            // Проверка специального имени
+            updateSpecialNameInfo();
+        });
+    }
     
     // Проверка Firebase
     checkFirebaseConnection();
@@ -255,58 +296,65 @@ async function checkFirebaseConnection() {
     try {
         if (!db) {
             updateConnectionStatus(false);
-            return;
+            return false;
         }
         
-        // Простая проверка подключения
         await db.enableNetwork();
+        
+        // Простая проверка
+        const testRef = db.collection('connection_test').doc('ping');
+        await testRef.set({
+            ping: new Date().toISOString()
+        }, { merge: true });
         
         updateConnectionStatus(true);
         debugLog("Firebase подключен успешно");
+        return true;
     } catch (error) {
         updateConnectionStatus(false);
         debugLog("Firebase не подключен:", error.message);
+        return false;
     }
 }
 
-// ========== ТЕСТ FIREBASE ==========
-async function testFirebase() {
-    showLoader(true);
-    debugLog("🔍 Тестируем Firebase подключение...");
+async function testFirebaseConnection() {
+    showLoader(true, 'Проверка Firebase...');
+    debugLog("🔧 Проверка подключения Firebase...");
     
     try {
-        if (!db) {
-            throw new Error("Firebase не инициализирован");
+        const connected = await checkFirebaseConnection();
+        
+        if (connected) {
+            // Пробуем создать тестовый документ
+            const testRef = db.collection('test_connection').doc('test');
+            await testRef.set({
+                test: "connection_test",
+                timestamp: new Date().toISOString()
+            });
+            
+            const doc = await testRef.get();
+            if (doc.exists) {
+                await testRef.delete();
+                showNotification("✅ Firebase работает отлично!", 'success');
+                debugLog("✅ Тест Firebase пройден успешно");
+            }
+        } else {
+            showNotification("❌ Ошибка подключения к Firebase", 'warning');
         }
-        
-        await db.enableNetwork();
-        debugLog("Сеть Firebase включена");
-        
-        alert("✅ Firebase работает отлично!\n\nМультиплеер доступен для игры!");
-        updateConnectionStatus(true);
-        
     } catch (error) {
-        debugLog("❌ Ошибка теста Firebase:", error);
-        updateConnectionStatus(false);
+        console.error("❌ Ошибка теста Firebase:", error);
+        debugLog("Ошибка теста Firebase:", error);
         
-        let errorMessage = "Ошибка Firebase: ";
-        
+        let errorMessage = "Ошибка: ";
         if (error.code === 'permission-denied') {
-            errorMessage += "Нет разрешений на запись в Firestore.\n\n";
-            errorMessage += "Правила Firestore должны быть:\n\n";
-            errorMessage += "rules_version = '2';\n";
-            errorMessage += "service cloud.firestore {\n";
-            errorMessage += "  match /databases/{database}/documents {\n";
-            errorMessage += "    match /rooms/{roomId} {\n";
-            errorMessage += "      allow read, write: if true;\n";
-            errorMessage += "    }\n";
-            errorMessage += "  }\n";
-            errorMessage += "}\n";
+            errorMessage += "Нет разрешений. Проверьте правила Firestore.";
+        } else if (error.code === 'failed-precondition') {
+            errorMessage += "Firestore не активирован.";
         } else {
             errorMessage += error.message;
         }
         
-        alert(errorMessage);
+        showNotification(errorMessage, 'warning');
     } finally {
         showLoader(false);
     }
@@ -320,13 +368,18 @@ function startSingleGame() {
         return;
     }
     
-    // Проверка на секретное имя
-    checkSecretName(nick);
-    
     const count = parseInt(document.getElementById("auto-count").value) || 10;
     if (count < 1 || count > 50) {
         alert("Выберите от 1 до 50 вопросов!");
         return;
+    }
+    
+    // Проверяем специальное имя
+    hasDoubleXP = checkSpecialName(nick);
+    baseScoreMultiplier = hasDoubleXP ? 2 : 1;
+    
+    if (hasDoubleXP) {
+        showNotification(`🎉 БОНУС АКТИВИРОВАН! Никнейм "${nick}" дает x2 опыт!`, 'special');
     }
     
     questions = getUniqueQuestions(count);
@@ -339,7 +392,8 @@ function startSingleGame() {
     debugLog("Одиночная игра начата", { 
         questions: questions.length, 
         nick,
-        hasDoubleXP
+        hasDoubleXP,
+        multiplier: baseScoreMultiplier
     });
 }
 
@@ -351,11 +405,8 @@ async function createRoom() {
         return;
     }
     
-    // Проверка на секретное имя
-    checkSecretName(nick);
-    
     if (!db) {
-        alert("Firebase не инициализирован. Нажмите 'Тест Firebase' для диагностики.");
+        alert("Firebase не инициализирован.");
         return;
     }
     
@@ -367,30 +418,25 @@ async function createRoom() {
         return;
     }
     
-    showLoader(true);
-    debugLog("Создание комнаты...", { questionCount, timePerQuestion, hasDoubleXP });
+    // Проверяем специальное имя
+    hasDoubleXP = checkSpecialName(nick);
+    baseScoreMultiplier = hasDoubleXP ? 2 : 1;
+    
+    showLoader(true, 'Создание комнаты...');
+    debugLog("Создание комнаты...", { 
+        questionCount, 
+        timePerQuestion,
+        nick,
+        hasDoubleXP
+    });
     
     try {
-        await db.enableNetwork();
-        
-        // Генерируем уникальный код комнаты
-        let attempts = 0;
-        let newRoomId;
-        let roomExists = true;
-        
-        // Проверяем, что комната с таким кодом не существует
-        while (roomExists && attempts < 10) {
-            newRoomId = generateRoomCode();
-            const roomDoc = await db.collection("rooms").doc(newRoomId).get();
-            roomExists = roomDoc.exists;
-            attempts++;
+        const connected = await checkFirebaseConnection();
+        if (!connected) {
+            throw new Error("Нет подключения к Firebase");
         }
         
-        if (roomExists) {
-            throw new Error("Не удалось создать уникальный код комнаты. Попробуйте еще раз.");
-        }
-        
-        roomId = newRoomId;
+        roomId = generateRoomCode();
         isCreator = true;
         
         debugLog("Генерируем код комнаты:", roomId);
@@ -406,7 +452,7 @@ async function createRoom() {
                 progress: 0,
                 joinedAt: new Date().toISOString(),
                 lastUpdate: new Date().toISOString(),
-                hasDoubleXP: hasDoubleXP
+                hasBonus: hasDoubleXP
             }],
             status: "waiting",
             questions: roomQuestions,
@@ -424,29 +470,21 @@ async function createRoom() {
             nick, 
             questions: questionCount,
             time: timePerQuestion,
-            hasDoubleXP
+            hasBonus: hasDoubleXP
         });
+        
+        if (hasDoubleXP) {
+            showNotification(`🎉 БОНУС АКТИВИРОВАН! Никнейм "${nick}" дает x2 опыт!`, 'special');
+        }
         
         showLobby();
         listenToRoom();
         updateShareLink();
         
-        // Скрываем индикатор подключения после создания комнаты
-        setTimeout(() => {
-            updateConnectionStatus(true, false);
-        }, 3000);
-        
-        alert(`✅ Комната создана!\n\nКод комнаты: ${roomId}\n\nДелитесь этим кодом с друзьями!`);
-        
     } catch (error) {
         console.error("❌ Ошибка создания комнаты:", error);
         debugLog("Ошибка создания комнаты:", error);
-        
-        if (error.code === 'permission-denied') {
-            alert("Ошибка доступа к Firebase.\n\nПроверьте правила Firestore или нажмите 'Тест Firebase' для диагностики.");
-        } else {
-            alert("Не удалось создать комнату: " + error.message);
-        }
+        alert("Не удалось создать комнату: " + error.message);
     } finally {
         showLoader(false);
     }
@@ -459,11 +497,8 @@ async function joinRoom() {
         return;
     }
     
-    // Проверка на секретное имя
-    checkSecretName(nick);
-    
     if (!db) {
-        alert("Firebase не инициализирован. Нажмите 'Тест Firebase' для диагностики.");
+        alert("Firebase не инициализирован.");
         return;
     }
     
@@ -473,10 +508,19 @@ async function joinRoom() {
         return;
     }
     
-    showLoader(true);
+    // Проверяем специальное имя
+    hasDoubleXP = checkSpecialName(nick);
+    baseScoreMultiplier = hasDoubleXP ? 2 : 1;
+    
+    showLoader(true, 'Присоединение к комнате...');
     debugLog("Присоединение к комнате:", roomId);
     
     try {
+        const connected = await checkFirebaseConnection();
+        if (!connected) {
+            throw new Error("Нет подключения к Firebase");
+        }
+        
         const roomRef = db.collection("rooms").doc(roomId);
         const roomDoc = await roomRef.get();
         
@@ -505,7 +549,7 @@ async function joinRoom() {
             progress: 0,
             joinedAt: new Date().toISOString(),
             lastUpdate: new Date().toISOString(),
-            hasDoubleXP: hasDoubleXP
+            hasBonus: hasDoubleXP
         };
         
         await roomRef.update({
@@ -521,13 +565,12 @@ async function joinRoom() {
             hasDoubleXP
         });
         
+        if (hasDoubleXP) {
+            showNotification(`🎉 БОНУС АКТИВИРОВАН! Никнейм "${nick}" дает x2 опыт!`, 'special');
+        }
+        
         showLobby();
         listenToRoom();
-        
-        // Скрываем индикатор подключения для игроков
-        updateConnectionStatus(false, false);
-        
-        alert(`✅ Вы присоединились к комнате ${roomId}!\n\nОжидайте начала игры...`);
         
     } catch (error) {
         console.error("❌ Ошибка присоединения:", error);
@@ -553,16 +596,18 @@ function updateShareLink() {
     const currentUrl = window.location.href.split('?')[0];
     const shareUrl = `${currentUrl}?room=${roomId}`;
     const shareBox = document.getElementById('share-link');
-    shareBox.textContent = shareUrl;
-    shareBox.title = "Нажмите чтобы скопировать ссылку";
+    if (shareBox) {
+        shareBox.textContent = shareUrl;
+        shareBox.title = "Нажмите чтобы скопировать ссылку";
+    }
 }
 
 function copyRoomCode() {
     const code = document.getElementById('room-code-display').textContent;
     navigator.clipboard.writeText(code).then(() => {
-        alert('✅ Код комнаты скопирован: ' + code);
+        showNotification('✅ Код комнаты скопирован: ' + code, 'success');
     }).catch(err => {
-        alert('❌ Не удалось скопировать код');
+        showNotification('❌ Не удалось скопировать код', 'warning');
     });
 }
 
@@ -580,13 +625,8 @@ function listenToRoom() {
         (doc) => {
             if (!doc.exists) {
                 debugLog("Комната удалена или не найдена");
-                if (gameStarted) {
-                    // Если мы в игре и комната удалена, завершаем игру локально
-                    finishGame();
-                } else {
-                    alert("Комната была удалена!");
-                    location.reload();
-                }
+                showNotification("Комната была удалена или не найдена!", 'warning');
+                setTimeout(() => location.reload(), 2000);
                 return;
             }
             
@@ -612,25 +652,15 @@ function listenToRoom() {
                 startMultiplayerGame(room);
             }
             
-            // ИЗМЕНЕНИЕ: Показываем результаты, только если мы уже завершили игру
             if (room.status === "finished" && gameStarted) {
                 debugLog("Игра завершена, показываем результаты");
-                // Не перезагружаем страницу, а показываем результаты
-                if (document.getElementById("results").classList.contains("hidden")) {
-                    showMultiplayerResults();
-                }
-            }
-            
-            // ИЗМЕНЕНИЕ: Если игра завершена, но мы еще не начали игру, просто показываем результаты
-            if (room.status === "finished" && !gameStarted) {
-                debugLog("Игра уже завершена другими игроками");
-                showMultiplayerResults();
+                showMultiplayerResults(room);
             }
         },
         (error) => {
             console.error("❌ Ошибка подписки на комнату:", error);
             debugLog("Ошибка подписки на комнату:", error);
-            updateConnectionStatus(false, isCreator);
+            updateConnectionStatus(false);
         }
     );
 }
@@ -655,11 +685,6 @@ function updateLobbyInfo(room) {
                     <span style="color: #ed8936; font-size: 18px;">${timePerQuestion} сек</span>
                 </div>
             </div>
-            ${hasDoubleXP ? `
-                <div style="margin-top: 10px; padding: 10px; background: linear-gradient(135deg, #FFD700, #FFA500); border-radius: 8px; color: #000; font-weight: bold; text-align: center;">
-                    ⚡ ВАУ! У вас ДВОЙНОЙ опыт за ответы! ⚡
-                </div>
-            ` : ''}
             ${isCreator ? `
                 <div style="margin-top: 10px; font-size: 14px; color: #718096;">
                     <em>Вы создатель комнаты и можете начать игру</em>
@@ -682,13 +707,13 @@ function updatePlayersList(room) {
         let playerClass = "player-card";
         if (player.ready) playerClass += " ready";
         if (player.nick === (room.creator || players[0]?.nick)) playerClass += " creator";
-        if (player.hasDoubleXP) playerClass += " double-xp";
+        if (player.hasBonus) playerClass += " special-player";
         
         html += `
-            <div class="${playerClass}" style="${player.hasDoubleXP ? 'border: 3px solid gold; background: linear-gradient(135deg, rgba(255, 215, 0, 0.1), rgba(255, 165, 0, 0.1));' : ''}">
+            <div class="${playerClass}">
                 <strong>${player.nick}</strong>
                 ${player.nick === (room.creator || players[0]?.nick) ? "👑" : ""}
-                ${player.hasDoubleXP ? "⚡" : ""}
+                ${player.hasBonus ? '<span style="color: #D69E2E; margin-left: 5px;">✨</span>' : ''}
                 <div style="margin-top: 8px; font-size: 14px;">
                     ${player.ready ? 
                         '<span style="color: #38a169;">✅ Готов</span>' : 
@@ -700,9 +725,9 @@ function updatePlayersList(room) {
                         🏆 ${player.score} очков
                     </div>
                 ` : ''}
-                ${player.hasDoubleXP ? `
-                    <div style="margin-top: 5px; font-size: 10px; color: #D69E2E; font-weight: bold;">
-                        ✨ ДВОЙНОЙ опыт
+                ${player.hasBonus ? `
+                    <div style="margin-top: 3px; font-size: 11px; color: #D69E2E; font-weight: bold;">
+                        x2 опыт
                     </div>
                 ` : ''}
             </div>
@@ -758,7 +783,7 @@ async function toggleReady() {
         const roomDoc = await roomRef.get();
         
         if (!roomDoc.exists) {
-            alert("Комната не найдена!");
+            showNotification("Комната не найдена!", 'warning');
             return;
         }
         
@@ -785,7 +810,7 @@ async function toggleReady() {
     } catch (error) {
         console.error("Ошибка изменения готовности:", error);
         debugLog("Ошибка изменения готовности:", error);
-        alert("Не удалось изменить статус готовности");
+        showNotification("Не удалось изменить статус готовности", 'warning');
     }
 }
 
@@ -813,7 +838,7 @@ function startCountdown() {
 
 async function startRoomGame() {
     if (!isCreator || !roomId || !db) {
-        alert("Только создатель комнаты может начать игру!");
+        showNotification("Только создатель комнаты может начать игру!", 'warning');
         return;
     }
     
@@ -826,7 +851,7 @@ async function startRoomGame() {
         
         const allReady = players.length >= 2 && players.every(p => p.ready);
         if (!allReady) {
-            alert("Не все игроки готовы или недостаточно игроков!");
+            showNotification("Не все игроки готовы или недостаточно игроков!", 'warning');
             return;
         }
         
@@ -858,7 +883,7 @@ async function startRoomGame() {
     } catch (error) {
         console.error("Ошибка начала игры:", error);
         debugLog("Ошибка начала игры:", error);
-        alert("Не удалось начать игру: " + error.message);
+        showNotification("Не удалось начать игру: " + error.message, 'warning');
     }
 }
 
@@ -905,7 +930,7 @@ async function forceStartGame() {
     } catch (error) {
         console.error("Ошибка принудительного старта:", error);
         debugLog("Ошибка принудительного старта:", error);
-        alert("Не удалось начать игру: " + error.message);
+        showNotification("Не удалось начать игру: " + error.message, 'warning');
     }
 }
 
@@ -921,28 +946,23 @@ function startMultiplayerGame(room) {
     document.getElementById("game").classList.remove("hidden");
     document.getElementById("live-results").classList.remove("hidden");
     
+    // Показываем индикатор бонуса если есть
+    const bonusIndicator = document.getElementById('bonus-indicator');
+    if (bonusIndicator) {
+        bonusIndicator.classList.toggle('hidden', !hasDoubleXP);
+    }
+    
     currentQuestionIndex = 0;
     score = 0;
     userAnswers = [];
     startTime = new Date();
-    
-    // Показываем уведомление о двойном опыте, если есть
-    if (hasDoubleXP) {
-        const doubleXPNotification = document.createElement('div');
-        doubleXPNotification.className = 'notification';
-        doubleXPNotification.textContent = "⚡ У вас активен ДВОЙНОЙ опыт! Все ответы дают x2 очков!";
-        doubleXPNotification.style.background = 'linear-gradient(135deg, #FFD700, #FFA500)';
-        doubleXPNotification.style.color = '#000';
-        document.body.appendChild(doubleXPNotification);
-        setTimeout(() => doubleXPNotification.remove(), 5000);
-    }
     
     setTimeout(() => {
         startGame();
         debugLog("Игра начата для игрока", { 
             nick, 
             questions: questions.length,
-            hasDoubleXP 
+            hasDoubleXP
         });
     }, 1000);
     
@@ -974,15 +994,15 @@ function listenToProgress() {
             const percent = total > 0 ? Math.round((progress / total) * 100) : 0;
             
             html += `
-                <div class="result-row" style="${player.hasDoubleXP ? 'border-left: 4px solid gold; background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 165, 0, 0.05));' : ''}">
+                <div class="result-row">
                     <div>
                         <strong>${place}. ${player.nick}</strong>
                         ${player.nick === room.creator ? "👑" : ""}
-                        ${player.hasDoubleXP ? " ⚡" : ""}
+                        ${player.hasBonus ? '<span style="color: #D69E2E;">✨</span>' : ''}
                     </div>
                     <div>
                         <strong>${player.score}</strong> очков
-                        ${player.hasDoubleXP ? '<br><small style="color: #D69E2E;">(x2 опыт)</small>' : ''}
+                        ${player.hasBonus ? '<span style="color: #D69E2E; font-size: 12px;">(x2)</span>' : ''}
                     </div>
                     <div>
                         ${progress}/${total} (${percent}%)
@@ -1012,7 +1032,8 @@ async function updatePlayerProgress() {
                     ...p,
                     score: score,
                     progress: currentQuestionIndex,
-                    lastUpdate: new Date().toISOString()
+                    lastUpdate: new Date().toISOString(),
+                    hasBonus: hasDoubleXP
                 };
             }
             return p;
@@ -1048,7 +1069,7 @@ function startGame() {
     debugLog("Игра начата", { 
         totalQuestions: questions.length,
         hasDoubleXP,
-        secretNames: SECRET_NAMES
+        multiplier: baseScoreMultiplier
     });
 }
 
@@ -1080,18 +1101,18 @@ function showQuestion() {
     clearInterval(questionTimer);
     
     const timerElement = document.getElementById("timer-value");
-    if (timerElement) {
+    const timerParent = document.getElementById("timer");
+    if (timerElement && timerParent) {
         timerElement.textContent = "0";
-        timerElement.parentElement.classList.remove("timer-warning", "timer-danger");
+        timerParent.classList.remove("timer-warning", "timer-danger");
     }
     
     questionTimer = setInterval(() => {
         elapsedTime++;
-        if (timerElement) {
+        if (timerElement && timerParent) {
             timerElement.textContent = elapsedTime;
             
             // Изменение цвета таймера
-            const timerParent = timerElement.parentElement;
             if (elapsedTime > 30) {
                 timerParent.classList.add("timer-danger");
                 timerParent.classList.remove("timer-warning");
@@ -1113,32 +1134,38 @@ function showQuestion() {
             // Блокируем все варианты
             Array.from(document.querySelectorAll(".option")).forEach(o => o.onclick = null);
             
-            // Подсчет очков
+            // Подсчет очков с учетом множителя
             let points = 100 - Math.floor(elapsedTime / 5) * 5;
             if (points < 0) points = 0;
             
-            // Применяем двойной опыт, если есть
-            if (hasDoubleXP) {
-                points *= 2;
-            }
-            
             const isCorrect = index === question.c;
+            const actualPoints = isCorrect ? Math.floor(points * baseScoreMultiplier) : 0;
             
             if (isCorrect) {
                 label.classList.add("correct");
-                score += points;
-                debugLog(`Правильный ответ! +${points} очков ${hasDoubleXP ? '(x2)' : ''}`, { 
+                score += actualPoints;
+                debugLog(`Правильный ответ! +${actualPoints} очков (базовых: ${points}, множитель: x${baseScoreMultiplier})`, { 
                     question: currentQuestionIndex + 1, 
                     time: elapsedTime,
-                    doubleXP: hasDoubleXP
+                    basePoints: points,
+                    multiplier: baseScoreMultiplier,
+                    totalPoints: actualPoints
                 });
+                
+                if (hasDoubleXP && baseScoreMultiplier > 1) {
+                    showNotification(`✨ +${actualPoints} очков (x${baseScoreMultiplier} бонус)`, 'special');
+                }
             } else {
                 label.classList.add("wrong");
                 const correctOption = document.querySelectorAll(".option")[question.c];
                 if (correctOption) {
                     correctOption.classList.add("correct");
                 }
-                debugLog(`Неправильный ответ`, { question: currentQuestionIndex + 1 });
+                debugLog(`Неправильный ответ`, { 
+                    question: currentQuestionIndex + 1,
+                    selected: answer,
+                    correct: question.a[question.c]
+                });
             }
             
             // Сохраняем ответ
@@ -1149,8 +1176,9 @@ function showQuestion() {
                 isCorrect: isCorrect,
                 explanation: question.exp,
                 time: elapsedTime,
-                points: isCorrect ? points : 0,
-                doubleXP: hasDoubleXP && isCorrect
+                basePoints: points,
+                multiplier: baseScoreMultiplier,
+                actualPoints: actualPoints
             });
             
             // Обновляем прогресс в мультиплеере
@@ -1202,11 +1230,10 @@ function finishGame() {
     
     debugLog("Игра завершена", {
         score: score,
+        baseMultiplier: baseScoreMultiplier,
         time: elapsedSec,
         correctAnswers: userAnswers.filter(a => a.isCorrect).length,
-        totalQuestions: questions.length,
-        hasDoubleXP,
-        doubleXPBonus: hasDoubleXP ? "активен" : "не активен"
+        totalQuestions: questions.length
     });
 }
 
@@ -1218,95 +1245,114 @@ function showSingleResults(elapsedSec) {
     
     const resElement = document.getElementById("final-result");
     if (resElement) {
-        resElement.innerHTML = `
-            <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков
-            ${hasDoubleXP ? '<span style="color: gold; font-weight: bold;"> (с ДВОЙНЫМ опытом!)</span>' : ''}<br>
+        let resultHTML = `
+            <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков<br>
             Правильных ответов: <strong>${correctAnswers} из ${questions.length}</strong> (${accuracy}%)<br>
             Время: ${min} мин ${sec} сек
-            ${hasDoubleXP ? '<br><span style="color: #D69E2E; font-weight: bold;">🎉 Секретное имя дало вам ДВОЙНОЙ опыт!</span>' : ''}
         `;
+        
+        if (hasDoubleXP) {
+            const baseScore = Math.floor(score / baseScoreMultiplier);
+            resultHTML += `<br><span style="color:#D69E2E; font-weight:bold;">✨ Бонус x${baseScoreMultiplier} применен! (базовых очков: ${baseScore})</span>`;
+        }
+        
+        resElement.innerHTML = resultHTML;
     }
+    
+    // Сохраняем результат в историю
+    saveGameResult({
+        nick,
+        score,
+        correctAnswers,
+        totalQuestions: questions.length,
+        accuracy,
+        time: elapsedSec,
+        hasDoubleXP,
+        multiplier: baseScoreMultiplier,
+        mode: "single"
+    });
     
     showDetailedResults();
 }
 
 async function showMultiplayerResults(elapsedSec) {
     try {
-        if (!roomId || !db) return;
+        if (!roomId || !db) {
+            showSingleResults(elapsedSec);
+            return;
+        }
         
         const roomRef = db.collection("rooms").doc(roomId);
         const roomDoc = await roomRef.get();
         
         if (!roomDoc.exists) {
-            // Если комнаты нет, показываем локальные результаты
-            showSingleResults(elapsedSec || 0);
+            showNotification("Комната не найдена!", 'warning');
+            showSingleResults(elapsedSec);
             return;
         }
         
         const room = roomDoc.data();
         
-        // Если elapsedSec не передан, используем 0
-        const finalElapsedSec = elapsedSec || 0;
+        // Обновляем наш финальный счет
+        const updatedPlayers = room.players.map(p => {
+            if (p.nick === nick) {
+                return {
+                    ...p,
+                    score: score,
+                    finished: true,
+                    finishTime: new Date().toISOString(),
+                    totalTime: elapsedSec,
+                    hasBonus: hasDoubleXP
+                };
+            }
+            return p;
+        });
         
-        // Обновляем наш финальный счет только если игра начата
-        if (gameStarted) {
-            const updatedPlayers = room.players.map(p => {
-                if (p.nick === nick) {
-                    return {
-                        ...p,
-                        score: score,
-                        finished: true,
-                        finishTime: new Date().toISOString(),
-                        totalTime: finalElapsedSec
-                    };
-                }
-                return p;
+        // Проверяем, все ли игроки закончили
+        const allFinished = updatedPlayers.every(p => p.finished || p.score === 0);
+        
+        if (allFinished) {
+            await roomRef.update({
+                players: updatedPlayers,
+                lastActive: new Date().toISOString(),
+                status: "finished"
             });
-            
+        } else {
             await roomRef.update({
                 players: updatedPlayers,
                 lastActive: new Date().toISOString()
-                // Не меняем статус на finished, если он уже установлен
             });
         }
         
-        // Получаем актуальные данные
-        const updatedRoomDoc = await roomRef.get();
-        const updatedRoom = updatedRoomDoc.data();
-        const currentPlayers = updatedRoom.players || [];
-        
         // Сортируем игроков по очкам
-        const sortedPlayers = [...currentPlayers].sort((a, b) => b.score - a.score);
+        const sortedPlayers = [...updatedPlayers].sort((a, b) => b.score - a.score);
         const playerIndex = sortedPlayers.findIndex(p => p.nick === nick);
         const playerPlace = playerIndex + 1;
-        const isWinner = playerPlace === 1 && sortedPlayers.length > 0;
+        const isWinner = playerPlace === 1;
         
         const correctAnswers = userAnswers.filter(a => a.isCorrect).length;
         const accuracy = questions.length > 0 ? Math.round((correctAnswers / questions.length) * 100) : 0;
         
         const resElement = document.getElementById("final-result");
         if (resElement) {
-            resElement.innerHTML = `
-                <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков
-                ${hasDoubleXP ? '<span style="color: gold; font-weight: bold;"> (с ДВОЙНЫМ опытом!)</span>' : ''}<br>
+            let resultHTML = `
+                <strong>${nick}</strong>, ваш результат: <span style="color:#667eea; font-size:1.2em;">${score}</span> очков<br>
                 Место: <strong>${playerPlace} из ${sortedPlayers.length}</strong><br>
                 Правильных ответов: <strong>${correctAnswers} из ${questions.length}</strong> (${accuracy}%)
-                ${hasDoubleXP ? '<br><span style="color: #D69E2E; font-weight: bold;">🎉 Секретное имя дало вам ДВОЙНОЙ опыт!</span>' : ''}
             `;
+            
+            if (hasDoubleXP) {
+                const baseScore = Math.floor(score / baseScoreMultiplier);
+                resultHTML += `<br><span style="color:#D69E2E; font-weight:bold;">✨ Бонус x${baseScoreMultiplier} применен! (базовых очков: ${baseScore})</span>`;
+            }
+            
+            resElement.innerHTML = resultHTML;
         }
         
         if (isWinner) {
             const winnerElement = document.getElementById("winner");
             if (winnerElement) winnerElement.classList.remove("hidden");
-            
-            // Добавляем спецэффекты для победителя
-            if (hasDoubleXP) {
-                const winnerIcon = document.querySelector('.winner-icon');
-                if (winnerIcon) winnerIcon.textContent = "⚡🏆⚡";
-                const winnerText = document.querySelector('.winner-text');
-                if (winnerText) winnerText.style.color = 'gold';
-                winnerText.textContent = "ПОБЕДА С ДВОЙНЫМ ОПЫТОМ!";
-            }
+            showNotification("🏆 ПОБЕДА! Вы заняли первое место!", 'success');
         }
         
         // Таблица результатов
@@ -1315,17 +1361,25 @@ async function showMultiplayerResults(elapsedSec) {
             let html = "";
             sortedPlayers.forEach((player, index) => {
                 const place = index + 1;
-                const totalQuestions = updatedRoom.questionCount || 20;
+                const totalQuestions = room.questionCount || 20;
                 const progress = player.progress || 0;
-                const playerAccuracy = progress > 0 ? Math.round((player.score / (progress * 100)) * 100) || 0 : 0;
+                
+                // Более точный расчет точности
+                let playerAccuracy = 0;
+                if (progress > 0) {
+                    // Предполагаем, что за каждый правильный ответ дается примерно 100 очков
+                    const estimatedCorrect = Math.floor(player.score / 100);
+                    playerAccuracy = totalQuestions > 0 ? Math.round((estimatedCorrect / totalQuestions) * 100) : 0;
+                }
+                
                 const finishTime = player.finished ? "Завершил" : "Не завершил";
-                const hasDoubleXP = player.hasDoubleXP || false;
+                const bonusText = player.hasBonus ? '<span style="color:#D69E2E">✨</span>' : '';
                 
                 html += `
-                    <tr style="${hasDoubleXP ? 'background: linear-gradient(135deg, rgba(255, 215, 0, 0.05), rgba(255, 165, 0, 0.05));' : ''}">
+                    <tr>
                         <td>${place} ${place === 1 ? "🏆" : place === 2 ? "🥈" : place === 3 ? "🥉" : ""}</td>
-                        <td>${player.nick} ${player.nick === updatedRoom.creator ? "👑" : ""} ${hasDoubleXP ? "⚡" : ""}</td>
-                        <td><strong>${player.score}</strong> ${hasDoubleXP ? '<small style="color: #D69E2E;">(x2)</small>' : ''}</td>
+                        <td>${player.nick} ${player.nick === room.creator ? "👑" : ""} ${bonusText}</td>
+                        <td><strong>${player.score}</strong> ${player.hasBonus ? '<span style="color:#D69E2E; font-size:12px;">(x2)</span>' : ''}</td>
                         <td>${finishTime}</td>
                         <td>${playerAccuracy}%</td>
                     </tr>
@@ -1335,21 +1389,22 @@ async function showMultiplayerResults(elapsedSec) {
             finalResults.tBodies[0].innerHTML = html;
         }
         
-        // Показываем результаты
-        const gameElement = document.getElementById("game");
-        const resultsElement = document.getElementById("results");
+        // Сохраняем результат в историю
+        saveGameResult({
+            nick,
+            score,
+            correctAnswers,
+            totalQuestions: questions.length,
+            accuracy,
+            time: elapsedSec,
+            hasDoubleXP,
+            multiplier: baseScoreMultiplier,
+            mode: "multi",
+            playersCount: sortedPlayers.length,
+            place: playerPlace
+        });
         
-        if (gameElement) gameElement.classList.add("hidden");
-        if (resultsElement) resultsElement.classList.remove("hidden");
-        
-        // Показываем детальные результаты если есть данные
-        if (userAnswers.length > 0) {
-            showDetailedResults();
-        }
-        
-        // Обновляем live-результаты
-        const liveResults = document.getElementById("live-results");
-        if (liveResults) liveResults.classList.add("hidden");
+        showDetailedResults();
         
         debugLog("Мультиплеерные результаты показаны", {
             place: playerPlace,
@@ -1361,9 +1416,29 @@ async function showMultiplayerResults(elapsedSec) {
     } catch (error) {
         console.error("Ошибка показа результатов:", error);
         debugLog("Ошибка показа результатов:", error);
+        showNotification("Не удалось загрузить результаты", 'warning');
+        showSingleResults(elapsedSec);
+    }
+}
+
+function saveGameResult(gameData) {
+    try {
+        const gameHistory = JSON.parse(localStorage.getItem('mathBattleHistory') || '[]');
         
-        // Показываем локальные результаты в случае ошибки
-        showSingleResults(elapsedSec || 0);
+        gameHistory.unshift({
+            ...gameData,
+            date: new Date().toISOString()
+        });
+        
+        // Ограничиваем историю 50 последними играми
+        if (gameHistory.length > 50) {
+            gameHistory.pop();
+        }
+        
+        localStorage.setItem('mathBattleHistory', JSON.stringify(gameHistory));
+        debugLog("Результат игры сохранен", gameData);
+    } catch (error) {
+        debugLog("Ошибка сохранения результата игры:", error);
     }
 }
 
@@ -1381,8 +1456,8 @@ function showDetailedResults() {
     
     let html = "";
     let correctCount = 0;
-    let totalPoints = 0;
-    let totalDoubleXPPoints = 0;
+    let totalBasePoints = 0;
+    let totalBonusPoints = 0;
     
     userAnswers.forEach((answer, index) => {
         const questionNumber = index + 1;
@@ -1391,22 +1466,22 @@ function showDetailedResults() {
         
         if (answer.isCorrect) {
             correctCount++;
-            totalPoints += answer.points;
-            if (answer.doubleXP) {
-                totalDoubleXPPoints += answer.points / 2; // Половина - бонус
-            }
+            totalBasePoints += answer.basePoints;
+            totalBonusPoints += (answer.actualPoints - answer.basePoints);
         }
         
+        const bonusText = answer.multiplier > 1 && answer.isCorrect ? 
+            `<span style="color:#D69E2E; font-weight:bold;"> (x${answer.multiplier} бонус)</span>` : '';
+        
         html += `
-            <div class="question-result ${resultClass}" style="${answer.doubleXP ? 'border: 2px solid gold;' : ''}">
+            <div class="question-result ${resultClass}">
                 <div><strong>${icon} Вопрос ${questionNumber}:</strong> ${answer.question}</div>
                 <div><strong>Ваш ответ:</strong> ${answer.userAnswer}</div>
                 <div><strong>Правильный ответ:</strong> ${answer.correctAnswer}</div>
                 <div><strong>Объяснение:</strong> ${answer.explanation}</div>
                 <div style="margin-top: 5px; font-size: 14px; color: #718096;">
                     <strong>Время:</strong> ${answer.time} сек 
-                    <strong>Очки:</strong> ${answer.points}
-                    ${answer.doubleXP ? '<strong style="color: gold; margin-left: 10px;">⚡ ДВОЙНОЙ опыт!</strong>' : ''}
+                    <strong>Очки:</strong> ${answer.isCorrect ? answer.actualPoints : 0}${bonusText}
                 </div>
             </div>
         `;
@@ -1416,16 +1491,9 @@ function showDetailedResults() {
     const totalTime = userAnswers.reduce((sum, answer) => sum + answer.time, 0);
     const avgTime = userAnswers.length > 0 ? Math.round(totalTime / userAnswers.length) : 0;
     
-    const bonusText = hasDoubleXP ? `
-        <div style="background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center; font-weight: bold;">
-            ⚡ БОНУС ЗА СЕКРЕТНОЕ ИМЯ: +${totalDoubleXPPoints} очков! ⚡
-        </div>
-    ` : '';
-    
     const statsHtml = `
         <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-radius: 12px; border-left: 5px solid #667eea;">
             <h4 style="margin-top: 0; color: #4a5568;">📈 Статистика игры</h4>
-            ${bonusText}
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
                 <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
                     <div style="font-size: 12px; color: #718096;">Правильных ответов</div>
@@ -1440,15 +1508,15 @@ function showDetailedResults() {
                 <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
                     <div style="font-size: 12px; color: #718096;">Общий счет</div>
                     <div style="font-size: 28px; font-weight: 700; color: #d69e2e;">${score}</div>
-                    <div style="font-size: 14px; color: #718096;">очков ${hasDoubleXP ? '<br><span style="color: gold;">(x2 опыт)</span>' : ''}</div>
+                    <div style="font-size: 14px; color: #718096;">очков${hasDoubleXP ? `<br><span style="color:#D69E2E">(x${baseScoreMultiplier} бонус)</span>` : ''}</div>
                 </div>
             </div>
             ${hasDoubleXP ? `
-                <div style="margin-top: 15px; text-align: center; color: #D69E2E; font-weight: bold;">
-                    ⚡ Вы использовали секретное имя "${nick}" и получили ДВОЙНОЙ опыт!
-                </div>
-                <div style="margin-top: 5px; text-align: center; font-size: 12px; color: #718096;">
-                    Секретные имена для двойного опыта: ${SECRET_NAMES.join(', ')}
+                <div style="margin-top: 15px; padding: 12px; background: linear-gradient(135deg, rgba(246, 224, 94, 0.2), rgba(214, 158, 46, 0.2)); border-radius: 8px; border: 1px solid #D69E2E;">
+                    <div style="color: #744210; font-weight: bold; text-align: center;">
+                        ✨ БОНУС X${baseScoreMultiplier} АКТИВИРОВАН!<br>
+                        Базовых очков: ${totalBasePoints} | Бонусных: +${totalBonusPoints}
+                    </div>
                 </div>
             ` : ''}
         </div>
@@ -1524,12 +1592,15 @@ async function returnToLobby() {
     } catch (error) {
         console.error("Ошибка возврата в лобби:", error);
         debugLog("Ошибка возврата в лобби:", error);
-        alert("Не удалось вернуться в лобби");
+        showNotification("Не удалось вернуться в лобби", 'warning');
     }
 }
 
 async function leaveRoom() {
-    if (!roomId || !nick) return;
+    if (!roomId || !nick) {
+        location.reload();
+        return;
+    }
     
     isPageUnloading = true;
     
@@ -1576,33 +1647,13 @@ async function leaveRoom() {
         progressUnsubscribe = null;
     }
     
-    location.reload();
+    setTimeout(() => {
+        location.reload();
+    }, 100);
 }
 
-// ========== БЕЗОПАСНОЕ ОБНОВЛЕНИЕ КОМНАТЫ ==========
-async function safelyUpdateRoom(data) {
-    try {
-        if (!roomId || !db) return false;
-        
-        const roomRef = db.collection("rooms").doc(roomId);
-        const roomDoc = await roomRef.get();
-        
-        if (roomDoc.exists) {
-            await roomRef.update({
-                ...data,
-                lastActive: new Date().toISOString()
-            });
-            return true;
-        }
-        return false;
-    } catch (error) {
-        debugLog("Ошибка обновления комнаты:", error);
-        return false;
-    }
-}
-
-// ========== ОЧИСТКА СТАРЫХ КОМНАТ (автоматическая) ==========
-async function cleanupOldRooms() {
+// ========== ОЧИСТКА СТАРЫХ КОМНАТ ==========
+setInterval(async () => {
     try {
         if (!db) return;
         
@@ -1611,33 +1662,46 @@ async function cleanupOldRooms() {
             .where("lastActive", "<", hourAgo)
             .get();
         
-        const deletionPromises = [];
         oldRooms.forEach(doc => {
-            deletionPromises.push(doc.ref.delete());
+            doc.ref.delete();
             debugLog("Удалена старая комната:", doc.id);
         });
-        
-        await Promise.all(deletionPromises);
-        
     } catch (error) {
         debugLog("Ошибка очистки комнат:", error);
     }
-}
-
-// Запускаем очистку каждые 30 минут
-setInterval(cleanupOldRooms, 30 * 60 * 1000);
-
-// Очищаем сразу при загрузке
-cleanupOldRooms();
+}, 30 * 60 * 1000);
 
 // ========== ОБРАБОТКА ЗАКРЫТИЯ СТРАНИЦЫ ==========
 window.addEventListener('beforeunload', function(e) {
     if (!isPageUnloading && (gameStarted || roomId)) {
         e.preventDefault();
         e.returnValue = 'Вы находитесь в игре. Вы уверены, что хотите уйти?';
-        leaveRoom();
+        
+        // Показываем сообщение о выходе
+        if (roomId) {
+            const leaveBtn = document.createElement('button');
+            leaveBtn.textContent = 'Выйти из комнаты';
+            leaveBtn.onclick = () => {
+                leaveRoom();
+            };
+            
+            const notification = document.createElement('div');
+            notification.style.cssText = 'position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); background:white; padding:20px; border-radius:10px; box-shadow:0 0 20px rgba(0,0,0,0.3); z-index:9999;';
+            notification.innerHTML = `
+                <h3>Вы находитесь в игре</h3>
+                <p>Вы уверены, что хотите уйти?</p>
+                <button onclick="location.reload()" style="margin-right:10px;">Обновить страницу</button>
+            `;
+            notification.appendChild(leaveBtn);
+            document.body.appendChild(notification);
+        }
     }
 });
 
-console.log("🎮 Математическая Битва полностью загружена и готова к работе!");
+console.log("🎮 Математическая битва полностью загружена и готова к работе!");
 debugLog("Система готова. Добро пожаловать в игру!");
+
+// Проверяем специальное имя при загрузке
+setTimeout(() => {
+    updateSpecialNameInfo();
+}, 500);
