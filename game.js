@@ -1395,7 +1395,9 @@ function showDetailedResults() {
     let correctCount = 0;
     let totalPoints = 0;
     let totalDoubleXPPoints = 0;
+    let totalTime = 0;
     
+    // Проходим по всем ответам пользователя
     userAnswers.forEach((answer, index) => {
         const questionNumber = index + 1;
         const resultClass = answer.isCorrect ? "correct" : "wrong";
@@ -1409,75 +1411,146 @@ function showDetailedResults() {
             }
         }
         
+        totalTime += answer.time;
+        
         html += `
-            <div class="question-result ${resultClass}" style="${answer.doubleXP ? 'border: 2px solid gold;' : ''}">
-                <div><strong>${icon} Вопрос ${questionNumber}:</strong> ${answer.question}</div>
-                <div><strong>Ваш ответ:</strong> ${answer.userAnswer}</div>
-                <div><strong>Правильный ответ:</strong> ${answer.correctAnswer}</div>
-                <div><strong>Объяснение:</strong> ${answer.explanation}</div>
-                <div style="margin-top: 5px; font-size: 14px; color: #718096;">
-                    <strong>Время:</strong> ${answer.time} сек 
-                    <strong>Очки:</strong> ${answer.points}
-                    ${answer.doubleXP ? '<strong style="color: gold; margin-left: 10px;">⚡ ДВОЙНОЙ опыт!</strong>' : ''}
+            <div class="question-result ${resultClass}" style="margin-bottom: 15px; padding: 15px; border-radius: 8px; ${answer.isCorrect ? 'background: rgba(72, 187, 120, 0.1); border-left: 4px solid #48bb78;' : 'background: rgba(245, 101, 101, 0.1); border-left: 4px solid #f56565;'} ${answer.doubleXP ? 'border-right: 3px solid gold;' : ''}">
+                <div style="margin-bottom: 8px;">
+                    <strong style="font-size: 16px;">${icon} Вопрос ${questionNumber}:</strong>
+                    <div style="font-size: 14px; margin-top: 5px;">${answer.question}</div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 10px;">
+                    <div>
+                        <div style="color: #718096; font-size: 13px;">Ваш ответ:</div>
+                        <div style="font-weight: bold; ${!answer.isCorrect ? 'color: #f56565;' : ''}">${answer.userAnswer}</div>
+                    </div>
+                    <div>
+                        <div style="color: #718096; font-size: 13px;">Правильный ответ:</div>
+                        <div style="font-weight: bold; color: #48bb78;">${answer.correctAnswer}</div>
+                    </div>
+                </div>
+                
+                ${answer.explanation ? `
+                    <div style="margin-top: 10px; padding: 10px; background: rgba(102, 126, 234, 0.1); border-radius: 6px; border-left: 3px solid #667eea;">
+                        <div style="color: #718096; font-size: 13px; margin-bottom: 3px;">📚 Объяснение:</div>
+                        <div style="font-size: 14px;">${answer.explanation}</div>
+                    </div>
+                ` : ''}
+                
+                <div style="margin-top: 10px; display: flex; justify-content: space-between; font-size: 13px; color: #718096;">
+                    <div>
+                        <strong>Время:</strong> ${answer.time} сек
+                    </div>
+                    <div>
+                        <strong>Очки:</strong> 
+                        ${answer.isCorrect ? 
+                            `<span style="color: #d69e2e; font-weight: bold;">+${answer.points}</span>` : 
+                            '<span style="color: #a0aec0;">0</span>'
+                        }
+                        ${answer.doubleXP ? '<span style="color: gold; margin-left: 5px;">⚡</span>' : ''}
+                    </div>
                 </div>
             </div>
         `;
     });
     
+    // Рассчитываем статистику
     const accuracy = questions.length > 0 ? Math.round((correctCount / questions.length) * 100) : 0;
-    const totalTime = userAnswers.reduce((sum, answer) => sum + answer.time, 0);
     const avgTime = userAnswers.length > 0 ? Math.round(totalTime / userAnswers.length) : 0;
     
-    const bonusText = hasDoubleXP ? `
-        <div style="background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; padding: 15px; border-radius: 8px; margin: 10px 0; text-align: center; font-weight: bold;">
-            ⚡ БОНУС ЗА СЕКРЕТНОЕ ИМЯ: +${totalDoubleXPPoints} очков! ⚡
-        </div>
-    ` : '';
-    
+    // Создаем статистику
     const statsHtml = `
-        <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-radius: 12px; border-left: 5px solid #667eea;">
-            <h4 style="margin-top: 0; color: #4a5568;">📈 Статистика игры</h4>
-            ${bonusText}
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 12px; color: #718096;">Правильных ответов</div>
-                    <div style="font-size: 28px; font-weight: 700; color: #48bb78;">${correctCount}/${questions.length}</div>
-                    <div style="font-size: 14px; color: #718096;">${accuracy}%</div>
+        <div style="margin-bottom: 25px; padding: 20px; background: linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%); border-radius: 12px; border-left: 5px solid #667eea; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <h4 style="margin-top: 0; color: #4a5568; margin-bottom: 20px; text-align: center;">📈 Статистика игры</h4>
+            
+            ${hasDoubleXP ? `
+                <div style="background: linear-gradient(135deg, #FFD700, #FFA500); color: #000; padding: 12px 15px; border-radius: 8px; margin-bottom: 15px; text-align: center; font-weight: bold; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);">
+                    ⚡ БОНУС ЗА СЕКРЕТНОЕ ИМЯ: +${totalDoubleXPPoints} очков! ⚡
                 </div>
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 12px; color: #718096;">Общее время</div>
-                    <div style="font-size: 28px; font-weight: 700; color: #4299e1;">${totalTime} сек</div>
-                    <div style="font-size: 14px; color: #718096;">${avgTime} сек/вопрос</div>
+            ` : ''}
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-top: 15px;">
+                <!-- Правильные ответы -->
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Правильных ответов</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #48bb78;">${correctCount}</div>
+                    <div style="font-size: 14px; color: #718096;">из ${questions.length}</div>
+                    <div style="margin-top: 5px; font-size: 16px; font-weight: 600; color: #48bb78;">${accuracy}%</div>
                 </div>
-                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center;">
-                    <div style="font-size: 12px; color: #718096;">Общий счет</div>
+                
+                <!-- Время -->
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Время ответов</div>
+                    <div style="font-size: 28px; font-weight: 700; color: #4299e1;">${totalTime}с</div>
+                    <div style="font-size: 14px; color: #718096;">всего</div>
+                    <div style="margin-top: 5px; font-size: 16px; font-weight: 600; color: #4299e1;">${avgTime}с/вопрос</div>
+                </div>
+                
+                <!-- Очки -->
+                <div style="background: white; padding: 15px; border-radius: 8px; text-align: center; box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);">
+                    <div style="font-size: 12px; color: #718096; margin-bottom: 8px;">Общий счет</div>
                     <div style="font-size: 28px; font-weight: 700; color: #d69e2e;">${score}</div>
-                    <div style="font-size: 14px; color: #718096;">очков ${hasDoubleXP ? '<br><span style="color: gold;">(x2 опыт)</span>' : ''}</div>
+                    <div style="font-size: 14px; color: #718096;">очков</div>
+                    ${hasDoubleXP ? `
+                        <div style="margin-top: 5px; font-size: 12px; color: gold; font-weight: bold;">
+                            ⚡ x2 опыт
+                        </div>
+                    ` : ''}
                 </div>
             </div>
+            
             ${hasDoubleXP ? `
-                <div style="margin-top: 15px; text-align: center; color: #D69E2E; font-weight: bold;">
-                    ⚡ Вы использовали секретное имя "${nick}" и получили ДВОЙНОЙ опыт!
-                </div>
-                <div style="margin-top: 5px; text-align: center; font-size: 12px; color: #718096;">
-                    Секретные имена для двойного опыта: ${SECRET_NAMES.join(', ')}
+                <div style="margin-top: 15px; padding: 10px; background: rgba(255, 215, 0, 0.1); border-radius: 8px; text-align: center; border: 1px solid rgba(255, 215, 0, 0.3);">
+                    <div style="color: #D69E2E; font-weight: bold; font-size: 14px;">
+                        ⚡ Вы использовали секретное имя и получили ДВОЙНОЙ опыт!
+                    </div>
                 </div>
             ` : ''}
         </div>
     `;
     
-    answersListEl.innerHTML = statsHtml + html;
+    // Добавляем заголовок для детальных результатов
+    const detailedHeader = `
+        <div style="margin-bottom: 15px; padding: 10px 15px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 8px;">
+            <h4 style="margin: 0; font-size: 16px; display: flex; align-items: center; justify-content: center;">
+                📋 Детальные результаты по каждому вопросу
+            </h4>
+        </div>
+    `;
     
+    answersListEl.innerHTML = statsHtml + detailedHeader + html;
+    
+    // Добавляем кнопку для скрытия/показа деталей
     const detailsBtn = document.getElementById("details-btn");
     if (detailsBtn) {
         detailsBtn.textContent = "📊 Скрыть детальные результаты";
         detailsBtn.onclick = () => {
-            detailedResultsEl.classList.toggle("hidden");
-            detailsBtn.textContent = detailedResultsEl.classList.contains("hidden") 
-                ? "📊 Показать детальные результаты" 
-                : "📊 Скрыть детальные результаты";
+            const isHidden = detailedResultsEl.classList.contains("hidden");
+            if (isHidden) {
+                detailedResultsEl.classList.remove("hidden");
+                detailsBtn.textContent = "📊 Скрыть детальные результаты";
+                // Прокручиваем к результатам
+                detailedResultsEl.scrollIntoView({ behavior: 'smooth' });
+            } else {
+                detailedResultsEl.classList.add("hidden");
+                detailsBtn.textContent = "📊 Показать детальные результаты";
+            }
         };
     }
+    
+    // Прокручиваем к результатам
+    setTimeout(() => {
+        detailedResultsEl.scrollIntoView({ behavior: 'smooth' });
+    }, 300);
+    
+    debugLog("Детальные результаты показаны", {
+        correctAnswers: correctCount,
+        totalQuestions: questions.length,
+        accuracy: accuracy + '%',
+        totalScore: score,
+        hasDoubleXP: hasDoubleXP
+    });
 }
 
 // ========== УПРАВЛЕНИЕ КОМНАТОЙ ==========
